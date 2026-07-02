@@ -1,0 +1,44 @@
+[
+  {
+    "resourceName": "vm-app01",
+    "resourceId": "/subscriptions/0000/resourceGroups/rg-prod/providers/Microsoft.Compute/virtualMachines/vm-app01",
+    "serviceName": "Virtual Machines",
+    "meterName": "D2 v5",
+    "meterId": "aaaa1111-1111-1111-1111-111111111111",
+    "resourceLocation": "westus2",
+    "billingCurrency": "USD",
+    "quantity": 744,
+    "payGPrice": 0,
+    "effectivePrice": 0.0576,
+    "unitPrice": 0.0864,
+    "costInBillingCurrency": 42.8544
+  },
+  {
+    "resourceName": "sql-db01",
+    "resourceId": "/subscriptions/0000/resourceGroups/rg-prod/providers/Microsoft.Sql/servers/sql-db01",
+    "serviceName": "SQL Database",
+    "meterName": "vCore",
+    "meterId": "bbbb2222-2222-2222-2222-222222222222",
+    "resourceLocation": "westus2",
+    "billingCurrency": "USD",
+    "quantity": 744,
+    "payGPrice": 0,
+    "effectivePrice": 0.1344,
+    "unitPrice": 0.2016,
+    "costInBillingCurrency": 100.0
+  },
+  {
+    "resourceName": "stproddata01",
+    "resourceId": "/subscriptions/0000/resourceGroups/rg-prod/providers/Microsoft.Storage/storageAccounts/stproddata01",
+    "serviceName": "Storage",
+    "meterName": "Hot LRS Data Stored",
+    "meterId": "cccc3333-3333-3333-3333-333333333333",
+    "resourceLocation": "westus2",
+    "billingCurrency": "USD",
+    "quantity": 1000,
+    "payGPrice": 0,
+    "effectivePrice": 0.017,
+    "unitPrice": 0.017,
+    "costInBillingCurrency": 17.0
+  }
+]

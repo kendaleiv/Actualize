@@ -1,0 +1,17 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+venv/
+
+# Local cost exports / retail maps (may contain tenant data — never commit)
+*-costdetails.csv
+*-retail-map*.csv
+gaac-*
+
+# OS / editor
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/

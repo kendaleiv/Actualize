@@ -1,0 +1,11 @@
+[
+  {"resourceId": "/subs/x/rg/app/providers/Microsoft.Compute/virtualMachines/vm1", "resourceName": "vm1", "meterCategory": "Virtual Machines", "meterName": "D4s v5", "date": "2026-05-01", "quantity": 24, "costInBillingCurrency": 20.00, "billingCurrency": "USD"},
+  {"resourceId": "/subs/x/rg/app/providers/Microsoft.Compute/virtualMachines/vm1", "resourceName": "vm1", "meterCategory": "Virtual Machines", "meterName": "D4s v5", "date": "2026-05-02", "quantity": 24, "costInBillingCurrency": 20.00, "billingCurrency": "USD"},
+  {"resourceId": "/subs/x/rg/app/providers/Microsoft.Compute/virtualMachines/vm1", "resourceName": "vm1", "meterCategory": "Virtual Machines", "meterName": "D4s v5", "date": "2026-05-03", "quantity": 24, "costInBillingCurrency": 20.00, "billingCurrency": "USD"},
+  {"resourceId": "/subs/x/rg/app/providers/Microsoft.Storage/storageAccounts/stor1", "resourceName": "stor1", "meterCategory": "Storage", "meterName": "Hot LRS Data Stored", "date": "2026-05-01", "quantity": 500, "costInBillingCurrency": 10.00, "billingCurrency": "USD"},
+  {"resourceId": "/subs/x/rg/app/providers/Microsoft.Storage/storageAccounts/stor1", "resourceName": "stor1", "meterCategory": "Storage", "meterName": "Hot LRS Data Stored", "date": "2026-05-02", "quantity": 500, "costInBillingCurrency": 10.00, "billingCurrency": "USD"},
+  {"resourceId": "/subs/x/rg/app/providers/Microsoft.Storage/storageAccounts/stor1", "resourceName": "stor1", "meterCategory": "Storage", "meterName": "Hot LRS Data Stored", "date": "2026-05-03", "quantity": 500, "costInBillingCurrency": 10.00, "billingCurrency": "USD"},
+  {"resourceId": "/subs/x/rg/app/providers/Microsoft.KeyVault/vaults/kv1", "resourceName": "kv1", "meterCategory": "Key Vault", "meterName": "Operations", "date": "2026-05-01", "quantity": 1000, "costInBillingCurrency": 2.00, "billingCurrency": "USD"},
+  {"resourceId": "/subs/x/rg/app/providers/Microsoft.KeyVault/vaults/kv1", "resourceName": "kv1", "meterCategory": "Key Vault", "meterName": "Operations", "date": "2026-05-02", "quantity": 1000, "costInBillingCurrency": 2.00, "billingCurrency": "USD"},
+  {"resourceId": "/subs/x/rg/app/providers/Microsoft.KeyVault/vaults/kv1", "resourceName": "kv1", "meterCategory": "Key Vault", "meterName": "Operations", "date": "2026-05-03", "quantity": 1000, "costInBillingCurrency": 2.00, "billingCurrency": "USD"}
+]

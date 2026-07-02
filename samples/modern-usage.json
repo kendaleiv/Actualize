@@ -1,0 +1,44 @@
+[
+  {
+    "resourceName": "vm-app01",
+    "resourceId": "/subscriptions/0000/resourceGroups/rg-prod/providers/Microsoft.Compute/virtualMachines/vm-app01",
+    "resourceGroup": "rg-prod",
+    "serviceName": "Virtual Machines",
+    "meterName": "D2 v5",
+    "resourceLocation": "westus2",
+    "billingCurrency": "USD",
+    "quantity": 744,
+    "payGPrice": 0.096,
+    "effectivePrice": 0.0576,
+    "unitPrice": 0.0864,
+    "costInBillingCurrency": 42.8544
+  },
+  {
+    "resourceName": "stproddata01",
+    "resourceId": "/subscriptions/0000/resourceGroups/rg-prod/providers/Microsoft.Storage/storageAccounts/stproddata01",
+    "resourceGroup": "rg-prod",
+    "serviceName": "Storage",
+    "meterName": "Hot LRS Data Stored",
+    "resourceLocation": "westus2",
+    "billingCurrency": "USD",
+    "quantity": 1000,
+    "payGPrice": 0.0184,
+    "effectivePrice": 0.017,
+    "unitPrice": 0.017,
+    "costInBillingCurrency": 17.0
+  },
+  {
+    "resourceName": "egress-westus",
+    "resourceId": "/subscriptions/0000/resourceGroups/rg-prod/providers/Microsoft.Network/egress-westus",
+    "resourceGroup": "rg-prod",
+    "serviceName": "Bandwidth",
+    "meterName": "Standard Data Transfer Out",
+    "resourceLocation": "westus2",
+    "billingCurrency": "USD",
+    "quantity": 500,
+    "payGPrice": 0.087,
+    "effectivePrice": 0.087,
+    "unitPrice": 0.087,
+    "costInBillingCurrency": 43.5
+  }
+]

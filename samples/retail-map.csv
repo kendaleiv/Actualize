@@ -1,0 +1,4 @@
+meterId,retailPrice,unitOfMeasure,status,skuCount,prices
+aaaa1111-1111-1111-1111-111111111111,0.096,1 Hour,ok,1,0.096
+bbbb2222-2222-2222-2222-222222222222,,1 Hour,ambiguous,3,0.15;4.87;12.18
+cccc3333-3333-3333-3333-333333333333,0.0184,1 GB/Month,ok,1,0.0184

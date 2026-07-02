@@ -1,0 +1,24 @@
+[
+  {
+    "instanceName": "vm-legacy01",
+    "instanceId": "/subscriptions/0000/resourceGroups/rg-old/providers/Microsoft.Compute/virtualMachines/vm-legacy01",
+    "resourceGroup": "rg-old",
+    "consumedService": "Microsoft.Compute",
+    "meterDetails": { "meterName": "D2 v3", "meterCategory": "Virtual Machines", "unitOfMeasure": "1 Hour" },
+    "instanceLocation": "eastus",
+    "currency": "USD",
+    "usageQuantity": 744,
+    "pretaxCost": 55.80
+  },
+  {
+    "instanceName": "sql-legacy01",
+    "instanceId": "/subscriptions/0000/resourceGroups/rg-old/providers/Microsoft.Sql/servers/sql-legacy01",
+    "resourceGroup": "rg-old",
+    "consumedService": "Microsoft.Sql",
+    "meterDetails": { "meterName": "S0 DTUs", "meterCategory": "SQL Database", "unitOfMeasure": "1/Day" },
+    "instanceLocation": "eastus",
+    "currency": "USD",
+    "usageQuantity": 30,
+    "pretaxCost": 15.00
+  }
+]

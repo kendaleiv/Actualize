@@ -1,0 +1,4 @@
+ResourceName,ServiceName,Region,BillingCurrency,ListCost,EffectiveCost,BilledCost
+vm-app01,Virtual Machines,westus2,USD,71.424,42.8544,0
+stproddata01,Storage,westus2,USD,18.40,17.00,17.00
+egress-westus,Bandwidth,westus2,USD,43.50,43.50,43.50

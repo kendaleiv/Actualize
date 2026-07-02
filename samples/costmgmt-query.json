@@ -1,0 +1,14 @@
+{
+  "properties": {
+    "columns": [
+      { "name": "PreTaxCost", "type": "Number" },
+      { "name": "ResourceId", "type": "String" },
+      { "name": "Currency", "type": "String" }
+    ],
+    "rows": [
+      [42.8544, "/subscriptions/0000/resourceGroups/rg-prod/providers/Microsoft.Compute/virtualMachines/vm-app01", "USD"],
+      [17.0, "/subscriptions/0000/resourceGroups/rg-prod/providers/Microsoft.Storage/storageAccounts/stproddata01", "USD"],
+      [43.5, "/subscriptions/0000/resourceGroups/rg-prod/providers/Microsoft.Network/egress-westus", "USD"]
+    ]
+  }
+}
