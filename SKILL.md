@@ -93,6 +93,14 @@ identical; only the transport differs.
 
 ## Real-world gotchas (observed against a live tenant)
 
+- **`RBACAccessDenied` usually means the *wrong subscription is selected*, not a missing role.**
+  Cloud Shell defaults to the first subscription in the user's list, which is often **not** the
+  one hosting the resource. When `az consumption usage list` or the Cost Management query returns
+  `RBACAccessDenied` (a `403`), **do not** conclude the user lacks Cost Management Reader — first
+  confirm the resource actually lives in the selected subscription. Resolve the resource's real
+  `subscriptionId` with Azure Resource Graph, `az account set` to it, then retry (see "Pin the
+  subscription by resource" below). Only after the correct subscription is selected does a
+  persistent `403` point to a genuine role/scope problem.
 - **Subscription-scope consumption can be empty for some enrollment-based subscriptions.**
   `az consumption usage list` at subscription scope may return `[]` even when there's spend,
   because usage details live at the **enrollment / billing-account** scope. If Tier 1 is empty,
@@ -117,7 +125,11 @@ identical; only the transport differs.
 ## Workflow
 
 1. **Identify scope & agreement.** Ask (or have the user run) which billing scope and whether
-   it's EA, MCA, MOSP/PAYG, or CSP — this decides which command returns retail fields.
+   it's EA, MCA, MOSP/PAYG, or CSP — this decides which command returns retail fields. When the
+   user names a **specific resource** (e.g. an App Service plan), resolve *its* `subscriptionId`
+   and resource group with Resource Graph first and `az account set` to that subscription — don't
+   assume the default Cloud Shell subscription is the right one (see "Pin the subscription by
+   resource" below).
 2. **Emit a Cloud Shell command** (below) for the user to run in their tenant.
 3. **User pastes the raw output back.** Save it verbatim to a file.
 4. **Run the calculator** — never hand-compute:
@@ -132,10 +144,27 @@ identical; only the transport differs.
 
 Tell the user to open **Azure Cloud Shell** (Bash) at https://shell.azure.com. `az` is
 pre-authenticated there, so these run against **their** tenant without giving this skill access.
-Set the window first:
+
+**Pin the subscription by resource first (when the query targets a named resource).** Cloud
+Shell's default subscription is frequently the *wrong* one, which surfaces as `RBACAccessDenied`.
+Resolve the resource's real subscription (and resource group, for RG-scoped queries) up front and
+select it, so every later command runs against the correct billing scope:
 
 ```bash
-SUB=$(az account show --query id -o tsv)
+RES="my-app-plan"                        # the resource name the user gave
+az graph query -q "resources | where name =~ '$RES' | project name, resourceGroup, subscriptionId, id" -o table
+# then pin the subscription (and capture RG) from that result:
+SUB=<subscriptionId-from-above>
+RG=<resourceGroup-from-above>
+az account set --subscription "$SUB"
+az account show --query "{name:name, id:id}" -o table   # confirm you're where you expect
+```
+
+If Resource Graph isn't available, `az resource list --name "$RES"` in each candidate subscription
+works but is slower. Then set the period window:
+
+```bash
+SUB=$(az account show --query id -o tsv)   # already pinned above; or set it explicitly
 START=2026-06-01      # first day of the period, YYYY-MM-DD (UTC)
 END=2026-06-30        # last day of the period
 ```
