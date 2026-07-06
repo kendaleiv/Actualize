@@ -165,12 +165,6 @@ never alters a cost). Detected currency wins over the default, and genuinely mix
 never coerced to one currency or summed — it stays `MIXED(...)`. `--retail-currency` and
 `fetch_retail.py --currency` default to USD to match.
 
-## Not Azure-only in spirit
-
-The FOCUS path (`ListCost` vs `EffectiveCost`) is a cloud-agnostic FinOps standard, so the same
-calculator handles FOCUS exports from other providers. Works across Azure agreement types
-(EA, MCA, MOSP/PAYG, CSP), and the FOCUS path applies beyond Azure.
-
 ## Files
 
 | Path | Purpose |
@@ -186,19 +180,6 @@ calculator handles FOCUS exports from other providers. Works across Azure agreem
 ```bash
 python tests/test_actualize.py
 ```
-
-Asserts the exact expected numbers (blended 22.5%, delta −$608.75/mo run-rate, etc.) and the
-never-guess rules: zeroed-retail → UNKNOWN; ambiguous meterId → not enriched (even from raw Retail
-API JSON, and a paginated `NextPageLink` response adopts **nothing**); **partial-retail groups and
-totals leave Savings/Discount UNKNOWN** rather than blending mismatched row sets; substring matches
-are **token-boundary aware and require complete retail+actual coverage** (exact match wins, so `vm1`
-never drags in — or borrows the discount of — `vm10`), and matches with **different discounts are
-refused**; **mixed currencies are never summed** — not across totals, and not within a single group
-(e.g. `--group-by service`) — and USD retail is never applied to non-USD rows; `delta` reports a
-resource with **no actual-cost data as UNKNOWN, never $0**, and uses **run-rate-normalized** deltas
-for unequal windows; UNMATCHED excluded; resource lists never drop the first line. No network access
-— the Retail Prices logic is tested via its pure `resolve()` on synthetic records.
-
 ## License
 
 This project is licensed under the [MIT License](LICENSE) — © 2026 Microsoft.
