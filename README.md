@@ -1,6 +1,6 @@
 # Actualize
 
-Report the **actual** cost of Azure resources — what you really pay after Enterprise/MCA
+Report the **actual** cost of Azure resources — what you really pay after negotiated
 discounts, reservations, and savings plans — next to the **retail** (list / pay-as-you-go)
 price, with the **percent difference** per line item. Optionally convert a pasted table of USD
 cost *reductions* into **actual** savings.
@@ -123,6 +123,24 @@ the result you paste back, and presents the answer. The tables below are the too
 > lags until that commitment is reallocated or expires — I won't overstate it. Given a *before*
 > and *after* period instead, I'll show the exact change per resource (REMOVED/CHANGED/ADDED).
 
+### "We scaled a resource down — what's the actual *yearly* saving?"
+
+> **You:** We dropped these SQL databases from 4 to 2 vCore. What do we actually save per year?
+>
+> **`actualize`:** First I date the change (it's a SKU *update*, not a delete). A repo/PR merge date
+> isn't the deploy date — staged rollouts land region-by-region days later, so a
+> geo-replicated pair changes on *different days*. I confirm each region's exact change via Azure
+> Resource Graph change history (the size/SKU field varies by resource type — here `sku.capacity`
+> 4→2), then pull actual cost for a window fully before the first change and fully after the last,
+> and run `delta --annual`. The result is one row per resource plus a **TOTAL**, with columns for
+> the resource, its before/after actual cost, the raw change, the monthly run-rate change
+> (`Chg actual/mo`), the annualized change (`Chg actual/yr`), the percent change, and a status.
+>
+> The change columns come straight from the pasted actual-cost windows (`/mo` is normalized to a
+> monthly run-rate); the `/yr` column is that run-rate × 12 — a forward-looking projection valid
+> while usage and pricing hold, not measured actuals. I lead with the actual figure and, if asked,
+> show the retail / list price only as a separately labeled cross-check.
+
 ## Under the hood — the `actualize` calculator
 
 The skill runs a small stdlib-only Python CLI. You can also run it directly; every command is
@@ -142,7 +160,8 @@ python scripts/actualize.py meters --input DATA
 python scripts/fetch_retail.py --input DATA --out retail-map.csv
 
 # Change in ACTUAL cost for updated/deleted resources (before/after, or run-rate if removed)
-python scripts/actualize.py delta --before DATA [--after DATA2] [--resources LIST] [--decreases-only]
+# add --annual for a yearly run-rate column (monthly x 12; a forward projection, not measured actuals)
+python scripts/actualize.py delta --before DATA [--after DATA2] [--resources LIST] [--decreases-only] [--annual]
 ```
 
 `DATA` may be FOCUS CSV/JSON, modern/legacy usage-details JSON, or Cost Management `query` output
@@ -153,11 +172,16 @@ python scripts/actualize.py report  --input samples/modern-usage.json
 python scripts/actualize.py report  --input samples/zeroed-retail.json --retail-map samples/retail-map.csv
 python scripts/actualize.py savings --cost samples/modern-usage.json --reductions samples/reductions.md
 python scripts/actualize.py delta   --before samples/delta-before.json --after samples/delta-after.json
+python scripts/actualize.py delta   --before samples/delta-before.json --after samples/delta-after.json --annual
 python scripts/actualize.py delta   --before samples/delta-before.json --decreases-only
 ```
 
 The exact Azure Cloud Shell commands the skill emits (5 tiers, from `az consumption usage list`
-to the async Cost Details report and FOCUS export) are documented in [`SKILL.md`](SKILL.md).
+to the async Cost Details report and FOCUS export) are documented in [`SKILL.md`](SKILL.md). For a
+single actual figure or a before/after `delta`, the skill starts with the **Cost Management Query
+API** (`az rest … /query`, `AmortizedCost`, daily + `ResourceId` filter) — the most reliable actual
+source at subscription scope — and only uses `az consumption usage list` when it needs per-line
+retail alongside actual.
 
 **Currency.** A currency found in the data (`billingCurrency`) is always used; otherwise pass
 `--currency`, and if neither is present amounts default to **USD** (a label-only assumption that
