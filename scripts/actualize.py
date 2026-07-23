@@ -643,6 +643,7 @@ def render_savings(items, currency, fmt):
 # Delta mode (change in ACTUAL cost between two periods / projected run-rate)
 # ---------------------------------------------------------------------------
 DAYS_PER_MONTH = 30.4375  # average calendar month, for run-rate normalization
+MONTHS_PER_YEAR = 12       # annualization factor; 30.4375 x 12 = 365.25 days/yr
 
 
 def _parse_date(s):
@@ -869,9 +870,22 @@ def compute_delta(before, after, before_days, after_days, keep_keys, decreases_o
     return rows, normalize_rate, single
 
 
-def render_delta(rows, unmatched, currency, fmt, normalize_rate, single, before_days, after_days):
+def render_delta(rows, unmatched, currency, fmt, normalize_rate, single, before_days, after_days, annual=False):
     mixed = str(currency).upper().startswith("MIXED")
     n_unknown = sum(1 for r in rows if str(r.get("status", "")).startswith("UNKNOWN"))
+    # Annualize the monthly run-rate (yearly = monthly x 12 = daily x 365.25). This
+    # is a forward-looking run-rate PROJECTION, not measured actuals, and it can only
+    # be honestly derived from a normalized monthly figure -- never a raw window total.
+    # Only touch the row dicts / totals when annualization was actually requested, so
+    # the non-annual output (incl. JSON schema) is byte-for-byte unchanged.
+    can_annual = annual and normalize_rate
+    if annual:
+        # Work on shallow copies so annual rendering never mutates the caller's row
+        # dicts; a later non-annual render of the same list must not leak deltaYear.
+        rows = [dict(r) for r in rows]
+        for r in rows:
+            r["deltaYear"] = (r["deltaMonth"] * MONTHS_PER_YEAR) if (
+                can_annual and r.get("deltaMonth") is not None) else None
     # UNKNOWN rows have no trustworthy delta; keep a present-but-partial side out
     # of every total so an UNKNOWN row's lone before/after cannot masquerade as a
     # complete figure (or make the delta read as 0.00 = "no change").
@@ -880,49 +894,73 @@ def render_delta(rows, unmatched, currency, fmt, normalize_rate, single, before_
     tot_after = 0.0 if single else sum(r["after"] for r in counted if r["after"] is not None)
     tot_draw = sum(r["deltaRaw"] for r in counted if r["deltaRaw"] is not None)
     tot_dmon = sum(r["deltaMonth"] for r in counted if r["deltaMonth"] is not None) if normalize_rate else None
+    tot_dyear = sum(r["deltaYear"] for r in counted if r["deltaYear"] is not None) if can_annual else None
     if not counted and rows:
         # Every line item is UNKNOWN: an empty sum is 0.0, which would read as a
         # real "$0 / no change". Present totals as UNKNOWN rather than fabricate 0.
-        tot_before = tot_after = tot_draw = tot_dmon = None
+        tot_before = tot_after = tot_draw = tot_dmon = tot_dyear = None
     if mixed:
         # Summing actual across currencies is meaningless; keep per-resource rows
         # (each in its own currency) but do not present an aggregated total.
-        tot_before = tot_after = tot_draw = tot_dmon = None
+        tot_before = tot_after = tot_draw = tot_dmon = tot_dyear = None
 
     if fmt == "json":
-        return json.dumps({
+        payload = {
             "currency": currency, "mode": "run-rate" if single else "two-period",
             "beforeDays": before_days, "afterDays": after_days,
-            "normalizedMonthly": normalize_rate, "lineItems": rows,
+            "normalizedMonthly": normalize_rate,
+            "lineItems": rows,
             "unmatchedRequested": unmatched,
             "totals": {"before": tot_before, "after": (None if single else tot_after),
                        "deltaActual": tot_draw, "deltaMonthly": tot_dmon},
-        }, indent=2)
+        }
+        if annual:
+            # Additive keys, present only when --annual is requested, so existing
+            # (non-annual) JSON consumers see the exact same schema as before.
+            payload["annualized"] = can_annual
+            payload["totals"]["deltaAnnual"] = tot_dyear
+        return json.dumps(payload, indent=2)
 
     dcol = "Proj. change/mo if removed" if single else ("Chg actual/mo" if normalize_rate else "Chg actual")
+    ycol = "Proj. change/yr if removed" if single else "Chg actual/yr"
     if fmt == "csv":
         buf = io.StringIO(); w = csv.writer(buf)
-        w.writerow(["Resource", f"Before ({currency})", f"After ({currency})",
-                    f"Chg actual ({currency})", f"{dcol} ({currency})", "% change", "Status"])
+        head = ["Resource", f"Before ({currency})", f"After ({currency})",
+                f"Chg actual ({currency})", f"{dcol} ({currency})"]
+        if can_annual:
+            head.append(f"{ycol} ({currency})")
+        head += ["% change", "Status"]
+        w.writerow(head)
         for r in rows:
-            w.writerow([r["item"], _money(r["before"]), _money(r["after"]),
-                        _signed(r["deltaRaw"]), _signed(r["deltaMonth"]),
-                        _pct(r["pct"]), r["status"]])
-        w.writerow(["TOTAL", _money(tot_before), ("" if single else _money(tot_after)),
-                    _signed(tot_draw), _signed(tot_dmon), "", ""])
+            line = [r["item"], _money(r["before"]), _money(r["after"]),
+                    _signed(r["deltaRaw"]), _signed(r["deltaMonth"])]
+            if can_annual:
+                line.append(_signed(r["deltaYear"]))
+            line += [_pct(r["pct"]), r["status"]]
+            w.writerow(line)
+        tot = ["TOTAL", _money(tot_before), ("" if single else _money(tot_after)),
+               _signed(tot_draw), _signed(tot_dmon)]
+        if can_annual:
+            tot.append(_signed(tot_dyear))
+        tot += ["", ""]
+        w.writerow(tot)
         return buf.getvalue()
 
     hdr_after = "" if single else f" After ({currency}) |"
-    out = [f"| Resource | Before ({currency}) |{hdr_after} Chg actual ({currency}) | {dcol} | % change | Status |",
-           "|---|--:|" + ("" if single else "--:|") + "--:|--:|--:|---|"]
+    hdr_year = f" {ycol} |" if can_annual else ""
+    sep_year = "--:|" if can_annual else ""
+    out = [f"| Resource | Before ({currency}) |{hdr_after} Chg actual ({currency}) | {dcol} |{hdr_year} % change | Status |",
+           "|---|--:|" + ("" if single else "--:|") + "--:|--:|" + sep_year + "--:|---|"]
     for r in rows:
         after_cell = "" if single else f" {_money(r['after'])} |"
+        year_cell = f" {_signed(r['deltaYear'])} |" if can_annual else ""
         out.append(f"| {r['item']} | {_money(r['before'])} |{after_cell} "
-                   f"{_signed(r['deltaRaw'])} | {_signed(r['deltaMonth'])} | "
+                   f"{_signed(r['deltaRaw'])} | {_signed(r['deltaMonth'])} |{year_cell} "
                    f"{_pct(r['pct'])} | {r['status']} |")
     tot_after_cell = "" if single else f" **{_money(tot_after)}** |"
+    tot_year_cell = f" **{_signed(tot_dyear)}** |" if can_annual else ""
     out.append(f"| **TOTAL** | **{_money(tot_before)}** |{tot_after_cell} "
-               f"**{_signed(tot_draw)}** | **{_signed(tot_dmon)}** | | |")
+               f"**{_signed(tot_draw)}** | **{_signed(tot_dmon)}** |{tot_year_cell} | |")
     note = []
     if mixed:
         note.append(f"Cost data spans multiple currencies ({currency}); per-resource rows keep their "
@@ -940,6 +978,15 @@ def render_delta(rows, unmatched, currency, fmt, normalize_rate, single, before_
                         f"(before={before_days}, after={after_days}): change shown as raw totals for the "
                         "supplied windows. Pass --before-days/--after-days (or provide dated data for both "
                         "periods) for a monthly run-rate.")
+    if can_annual:
+        note.append(f"Yearly figures are the monthly run-rate x {MONTHS_PER_YEAR} "
+                    f"({DAYS_PER_MONTH:g} x {MONTHS_PER_YEAR} = {DAYS_PER_MONTH * MONTHS_PER_YEAR:g} days/yr): "
+                    "a forward-looking annualized run-rate PROJECTION, valid only while usage and pricing hold. "
+                    "It is not measured actuals: annualizing multiplies any error in the monthly run-rate by 12, "
+                    "and a short before/after window makes that run-rate less representative to begin with.")
+    elif annual and not normalize_rate:
+        note.append("Yearly column omitted: annualization needs a monthly run-rate. Pass "
+                    "--before-days" + ("" if single else "/--after-days") + " (or provide dated data) to enable --annual.")
     note.append("Negative change = actual cost went DOWN (a reduction). Every figure is actual Cost "
                 "Management data; nothing is projected beyond the stated run-rate.")
     if n_unknown and not mixed:
@@ -1036,6 +1083,10 @@ def main():
     d.add_argument("--before-days", type=float, default=None, help="Baseline window length in days (else inferred from dates).")
     d.add_argument("--after-days", type=float, default=None, help="Later window length in days (else inferred from dates).")
     d.add_argument("--decreases-only", action="store_true", help="Show only line items whose actual cost went down.")
+    d.add_argument("--annual", action="store_true",
+                   help="Add an annualized run-rate column (monthly run-rate x 12). Forward-looking "
+                        "projection, not measured actuals; requires a monthly run-rate (dated data, or "
+                        "--before-days and, for two-period mode, --after-days).")
     d.add_argument("--currency", default=None,
                    help="Force the display currency label (default: the currency found in the "
                         "data, else USD). Mixed-currency data is never coerced to one currency.")
@@ -1165,13 +1216,20 @@ def main():
 
         rows, normalize_rate, single = compute_delta(
             before, after, before_days, after_days, keep_keys, args.decreases_only)
+        if args.annual and not normalize_rate:
+            # The annual column needs a monthly run-rate; without window days it is
+            # omitted. Warn on stderr so csv/json callers (which don't get the md
+            # note) still learn why --annual produced no yearly figure.
+            sys.stderr.write("[warn] --annual ignored: no monthly run-rate (pass "
+                             "--before-days" + ("" if single else "/--after-days") +
+                             " or provide dated data).\n")
         sys.stderr.write(f"[info] mode={'run-rate' if single else 'two-period'} "
                          f"before_rows={len(before_recs)} after_rows={len(after_recs) if after_recs is not None else 0} "
                          f"before_days={before_days} after_days={after_days} "
-                         f"normalized_monthly={normalize_rate} currency={currency} "
+                         f"normalized_monthly={normalize_rate} annual={args.annual} currency={currency} "
                          f"line_items={len(rows)} unmatched={len(unmatched)}\n")
         print(render_delta(rows, unmatched, currency, args.format,
-                           normalize_rate, single, before_days, after_days))
+                           normalize_rate, single, before_days, after_days, args.annual))
         return
 
 

@@ -9,14 +9,14 @@ description: >-
   and computes the change in ACTUAL cost when resources are updated or deleted (before/after,
   or projected monthly run-rate if removed). Every number is backed by real Azure Cost
   Management / Consumption / FOCUS data — the skill NEVER guesses, assumes, or fabricates a
-  price. Works across Azure agreement types (EA, MCA, MOSP/PAYG, CSP), and still produces
+  price. Works across Azure agreement / billing types, and still produces
   a retail-vs-actual comparison when an export omits list price by enriching retail from the
   public Azure Retail Prices API.
 ---
 
 # Actualize — get the actual cost of Azure resources
 
-Report the **actual** cost of Azure resources — what you really pay after Enterprise/MCA
+Report the **actual** cost of Azure resources — what you really pay after negotiated
 discounts, reservations, and savings plans — next to the **retail** (list / pay-as-you-go)
 price, with the **percent difference** per line item and in total. Then, optionally, turn a
 pasted table of proposed **USD cost reductions** into **actual** savings.
@@ -106,6 +106,17 @@ identical; only the transport differs.
   because usage details live at the **enrollment / billing-account** scope. If Tier 1 is empty,
   use Tier 2/Tier 3 at the billing-account or enrollment-account scope (swap the `{scope}` in
   the URL), or ask the user for the billing scope.
+- **`az consumption usage list` can return rows whose cost fields are the literal `"None"`/null.**
+  On some subscriptions Tier 1 returns metadata rows (resource, meter, quantity) but
+  every `pretaxCost`/`costInBillingCurrency` comes back as the string `"None"` (or null) — the export
+  carries **no billed amounts**. This is a *silent* failure: the calculator will correctly mark every
+  actual `UNKNOWN`, but that's not a data problem you can fix by parsing. **Detect it early** — if the
+  cost column is uniformly `None`/null, stop and switch to the **Cost Management Query API (Tier 2)**,
+  which returns real amounts at subscription scope. Don't keep re-pasting Tier 1.
+- **`az graph query` prints only a count wrapper with `-o table`.** The rows live under a `data`
+  property, so a bare `-o table` shows just `Count`/`Total_records`. Always add `--query data`
+  (with `-o table`/`-o json`) — e.g. `az graph query -q "<kql>" --query data -o json` — or you'll
+  think the query returned nothing.
 - **The Cost Management Query API is aggressively throttled (HTTP 429).** Run it **once** and,
   on 429, wait and retry a single time (honor the `Retry-After` header when present; a plain
   `{"error":{"code":"429"}}` with no header means wait a few minutes). Do **not** hammer it with
@@ -125,7 +136,7 @@ identical; only the transport differs.
 ## Workflow
 
 1. **Identify scope & agreement.** Ask (or have the user run) which billing scope and whether
-   it's EA, MCA, MOSP/PAYG, or CSP — this decides which command returns retail fields. When the
+   which Azure agreement / billing type it is — this decides which command returns retail fields. When the
    user names a **specific resource** (e.g. an App Service plan), resolve *its* `subscriptionId`
    and resource group with Resource Graph first and `az account set` to that subscription — don't
    assume the default Cloud Shell subscription is the right one (see "Pin the subscription by
@@ -144,6 +155,18 @@ identical; only the transport differs.
 
 Tell the user to open **Azure Cloud Shell** (Bash) at https://shell.azure.com. `az` is
 pre-authenticated there, so these run against **their** tenant without giving this skill access.
+
+> **Cloud Shell is remote, not the user's laptop.** It has no `~/Downloads`, no `/mnt/c`, and no
+> access to local paths. Write any temp files to `~` or `/tmp` and end the snippet with `cat <file>`
+> so the user can copy the output back — never `mkdir` a Windows path or write to `~/Downloads`.
+
+> **Which tier to start with.** For an **actual-cost figure or a before/after `delta`, start with the
+> Tier 2 Cost Management Query API** (`az rest … /query`, `AmortizedCost`): it reliably returns real
+> amounts at subscription scope, works across agreement types, and — with a daily granularity +
+> `ResourceId In (...)` filter — emits a tiny, paste-friendly payload that feeds `delta` directly.
+> Reach for Tier 1 only when you specifically need per-line-item **retail** alongside actual, and be
+> ready to fall back if its cost fields come back `None` (see gotchas). The Tier 3 async report is the
+> most complete but the most fragile to run — prefer Tier 2 unless you need its full per-line CSV.
 
 **Pin the subscription by resource first (when the query targets a named resource).** Cloud
 Shell's default subscription is frequently the *wrong* one, which surfaces as `RBACAccessDenied`.
@@ -169,10 +192,13 @@ START=2026-06-01      # first day of the period, YYYY-MM-DD (UTC)
 END=2026-06-30        # last day of the period
 ```
 
-### Tier 1 — one command, retail + actual per line item (recommended; EA & MCA)
+### Tier 1 — retail + actual per line item, one command (includes list price)
 
-Returns per-resource usage details. On **modern** EA/MCA accounts each row carries both
+Returns per-resource usage details. On **modern** billing accounts each row carries both
 `payGPrice` (retail) and `costInBillingCurrency` (actual) plus `effectivePrice` and `quantity`.
+Use it when you specifically want per-line **retail** next to actual. **Caveat:** on some
+enrollment subscriptions the cost fields come back as literal `"None"`/null (metadata but no billed
+amounts) — if so, don't retry Tier 1; switch to the Tier 2 Query API (see gotchas).
 
 ```bash
 az consumption usage list --start-date $START --end-date $END \
@@ -181,13 +207,15 @@ az consumption usage list --start-date $START --end-date $END \
 
 Paste the JSON back → `python scripts/actualize.py report --input pasted.json`.
 
-If rows lack `payGPrice` (older **legacy EA** schema), retail shows `UNKNOWN` — use Tier 3 for
+If rows lack `payGPrice` (older **legacy** schema), retail shows `UNKNOWN` — use Tier 3 for
 list price, or Tier 4 to cross-check retail.
 
-### Tier 2 — grouped actual / amortized totals (all agreements)
+### Tier 2 — grouped actual / amortized totals (all agreements; **start here for actual & delta**)
 
 There is **no** `az costmanagement query` command; use the REST API via `az rest`. This returns
-**actual only** (no list price) — combine with Tier 4 retail, or prefer Tier 3 for both.
+**actual only** (no list price) — combine with Tier 4 retail if you need a retail comparison. It is
+the **most reliable actual-cost source at subscription scope** and the recommended first stop for a
+single actual figure or a before/after `delta`.
 
 ```bash
 az rest --method post \
@@ -209,12 +237,45 @@ invoice-time charges instead of amortized. Swap the scope in the URL for resourc
 billing-account, department, or enrollment-account scope as needed. **If you get HTTP 429**,
 wait (per `Retry-After`, or a few minutes) and retry **once** — don't loop rapidly.
 
+**Targeted `delta` recipe (recommended).** To compare a handful of resources across two periods,
+add `"granularity": "Daily"` and a `ResourceId In (...)` filter. Daily rows let `delta` infer window
+length automatically, and the filter keeps the output tiny and paste-friendly. Run it once per
+period (`$START`/`$END` set to the before window, then the after window):
+
+```bash
+# List every resourceId you care about (one entry per separately billed resource — e.g. each
+# member of a multi-region / failover set has its own id). Values are matched case-insensitively.
+RID1="/subscriptions/$SUB/resourcegroups/<rg>/providers/<provider>/<type>/<name>"
+RID2="/subscriptions/$SUB/resourcegroups/<rg>/providers/<provider>/<type>/<name-2>"
+az rest --method post \
+  --url "https://management.azure.com/subscriptions/$SUB/providers/Microsoft.CostManagement/query?api-version=2025-03-01" \
+  --body '{
+    "type": "AmortizedCost",
+    "timeframe": "Custom",
+    "timePeriod": { "from": "'"$START"'", "to": "'"$END"'" },
+    "dataset": {
+      "granularity": "Daily",
+      "aggregation": { "totalCost": { "name": "Cost", "function": "Sum" } },
+      "grouping": [ { "type": "Dimension", "name": "ResourceId" } ],
+      "filter": { "Dimensions": { "Name": "ResourceId", "Operator": "In", "Values": [ "'"$RID1"'", "'"$RID2"'" ] } }
+    }
+  }' -o json | tee ~/period.json    # cat ~/period.json to copy it back
+```
+
+Feed the two pasted files to `delta` (add `--annual` for a yearly run-rate):
+`python scripts/actualize.py delta --before before.json --after after.json --group-by resource --annual`.
+Daily rows normally cover every day the resource billed, so `delta` infers the window automatically.
+If a resource can have **zero-cost / inactive days** (which the query may omit), pass explicit
+`--before-days`/`--after-days` equal to the `$START`→`$END` span so a short denominator can't inflate
+the run-rate.
+
 ### Tier 3 — most complete: Cost Details report (retail + actual per line item, async)
 
 The modern replacement for the Usage Details API. Produces a CSV with `payGPrice`,
 `effectivePrice`, `costInBillingCurrency`, `quantity`, and full resource metadata. It's a
 3-step async flow; this Bash snippet runs the whole thing and prints the CSV to paste back
-(`metric` = `AmortizedCost` or `ActualCost`):
+(`metric` = `AmortizedCost` or `ActualCost`). It's the most fragile tier to run — prefer Tier 2
+unless you need the full per-line CSV.
 
 ```bash
 TOKEN=$(az account get-access-token --query accessToken -o tsv)
@@ -224,17 +285,26 @@ LOC=$(curl -s -D - -o /dev/null -X POST \
   "https://management.azure.com/$SCOPE/providers/Microsoft.CostManagement/generateCostDetailsReport?api-version=2025-03-01" \
   -H "Authorization: Bearer $TOKEN" -H "Content-Type: application/json" \
   -d '{"metric":"AmortizedCost","timePeriod":{"start":"'"$START"'","end":"'"$END"'"}}' \
-  | tr -d '\r' | awk '/^Location:/ {print $2}')
-# 2) poll until the blob URL(s) appear
-until RESP=$(curl -s -H "Authorization: Bearer $TOKEN" "$LOC") && \
-      echo "$RESP" | grep -q '"blobLink"'; do sleep 10; done
-# 3) download and print the CSV
-BLOB=$(echo "$RESP" | python3 -c "import sys,json;print(json.load(sys.stdin)['manifest']['blobs'][0]['blobLink'])")
-curl -s "$BLOB"
+  | tr -d '\r' | awk 'tolower($1)=="location:"{print $2}')   # case-insensitive header match
+if [ -z "$LOC" ]; then
+  echo "No Location header (report returned inline or errored); use Tier 2 instead." >&2
+else
+  # 2) poll until the blob URL(s) appear; bail out if the job reports Failed
+  until RESP=$(curl -s -H "Authorization: Bearer $TOKEN" "$LOC") \
+        && echo "$RESP" | grep -q '"blobLink"'; do
+    echo "$RESP" | grep -q '"status":"Failed"' && { echo "report Failed: $RESP" >&2; break; }
+    sleep 10
+  done
+  # 3) download and print the CSV (only if a blob actually appeared)
+  if echo "$RESP" | grep -q '"blobLink"'; then
+    BLOB=$(echo "$RESP" | python3 -c "import sys,json;print(json.load(sys.stdin)['manifest']['blobs'][0]['blobLink'])")
+    curl -s "$BLOB"
+  fi
+fi
 ```
 
-Paste the CSV back → `report`. (EA customers can use `"billingPeriod":"202606"` instead of
-`timePeriod`; MCA customers can use `"invoiceId":"..."`.)
+Paste the CSV back → `report`. (Some billing accounts can use `"billingPeriod":"202606"` instead of
+`timePeriod`, or `"invoiceId":"..."`.)
 
 ### Tier 4 — retail cross-check / fallback (anonymous, any tenant)
 
@@ -315,7 +385,7 @@ python scripts/actualize.py savings --cost DATA --reductions TABLE [--format md|
 python scripts/actualize.py meters --input DATA
 
 # Change in ACTUAL cost for updated/deleted resources (before/after, or run-rate if removed)
-python scripts/actualize.py delta --before DATA [--after DATA2] [--resources LIST] [--group-by resource] [--decreases-only]
+python scripts/actualize.py delta --before DATA [--after DATA2] [--resources LIST] [--group-by resource] [--decreases-only] [--annual]
 ```
 
 `report` emits one row per group with **Retail / Actual / Savings / Discount % / Note**, plus a
@@ -375,13 +445,73 @@ with no backing actual-cost data are reported **NOT FOUND** and excluded — nev
 python scripts/actualize.py delta --before before.csv --after after.csv --resources changed-resources.txt
 ```
 
-To get the before/after data, run Tier 3 (Cost Details report) for each period — its daily rows
-let `delta` infer window length. `delta` uses **actual cost only** (actual-vs-actual across time),
-so it needs no retail and is unaffected by a zeroed/absent `payGPrice`.
+To get the before/after data, run the **Tier 2 targeted `delta` recipe** (daily granularity +
+`ResourceId In (...)` filter) for each period — its daily rows let `delta` infer window length and
+the payload is tiny. Tier 3 (Cost Details report) also works. `delta` uses **actual cost only**
+(actual-vs-actual across time), so it needs no retail and is unaffected by a zeroed/absent
+`payGPrice`.
+
+**Annualize with `--annual`.** By default `delta` emits a monthly run-rate (`Chg actual/mo`). When
+the user wants a **yearly** figure, add `--annual` for a `Chg actual/yr` column (= monthly run-rate
+× 12; 30.4375 × 12 = 365.25 days/yr). It is a **forward-looking run-rate projection, not measured
+actuals** — valid only while usage and pricing hold; annualizing also multiplies any error in the
+monthly run-rate by 12, and a short before/after window makes that run-rate less representative to
+begin with. It needs a monthly run-rate (dated data, or `--before-days` and, for two-period mode,
+`--after-days`); without one the column is omitted with a note (md) or a stderr `[warn]` (csv/json)
+rather than fabricated.
 
 > Reservation nuance: a `REMOVED`/`RUN-RATE` reduction is the amortized run-rate, not guaranteed
 > cash. If the resource was covered by a reservation or savings plan, cash savings lag until that
 > commitment is reallocated or expires — state this alongside the number.
+
+### Dating a change: when did a scale-down / resize actually deploy?
+
+For an IaC scale-down ("we changed the SKU in the repo — what's the saving?") you first need the
+**exact per-resource change date**, because that decides the before/after windows. Key facts learned
+the hard way:
+
+- **Merge date ≠ deploy date.** The commit/PR that lowers a SKU can merge days or weeks before it
+  reaches production. Staged rollouts deploy **region-by-region**, so a geo-replicated
+  resource changes on *different days* per region — those are the "different days," not the merge.
+  Never assume the merge date is when cost dropped; confirm from Azure.
+- **Exact change time via Resource Graph change history** (last **14 days** only). Filter on
+  `properties.targetResourceId` — **not** `resourceId` (that column doesn't exist and errors),
+  and remember `--query data`:
+
+  ```bash
+  az account set --subscription "$SUB"   # change history is per-subscription
+  az graph query -q "resourcechanges | where properties.targetResourceId =~ '$RESID' \
+    | extend ts=todatetime(properties.changeAttributes.timestamp), chg=properties.changes \
+    | project ts, changeType=tostring(properties.changeType), chg | order by ts asc" \
+    --query data -o json
+  ```
+
+  Look for the size/SKU field's `previousValue`→`newValue` drop — that timestamp is the real
+  scale-down for that region. **The exact field varies by resource type**: SQL DB uses
+  `sku.capacity` / `properties.currentSku.capacity` (vCores), a VM uses
+  `properties.hardwareProfile.vmSize`, App Service / other SKU-based services use `sku.name` /
+  `sku.tier`, Cosmos DB uses provisioned throughput. Scan the `changes` payload for whichever
+  size/tier field moved.
+- **Older than 14 days → Activity Log** (~90-day retention). Two caveats that cost round-trips:
+  it is scoped to the **selected** subscription (run `az account set` first — unlike cross-sub
+  `az graph`), and its `properties` do **not** carry the SKU payload, so it tells you *a* write
+  happened but not *which* write changed the tier. Use it for timing, Resource Graph (or the cost
+  meter drop) for the "what changed."
+- **Fallback: the daily cost meter drop.** With no change-history record, the day a resource's daily
+  compute/SKU cost steps down (from the Tier 2 daily query) is the effective change date.
+
+**Multi-region / replicated resources bill and scale per region.** Some deployments are **several
+separately billed resources with distinct resourceIds** — e.g. an active geo-replication / failover
+pair (a primary + secondary SQL database) or the same service deployed independently to several
+regions. Each such resource has its own id and changes on its own rollout day, so scope the Tier 2
+query to **all** of them. (Contrast a *single* globally distributed resource — e.g. one multi-region
+Cosmos DB account — which usually keeps **one** resourceId, with regional cost split across meters /
+dimensions rather than separate ids; group or filter by those dimensions instead.) For a SKU
+*change* (not a removal) pick a baseline window fully **before the first** region's change and an
+after window fully **after the last** region's change, so no partially-migrated day muddies the
+run-rate. Isolate the resource you care about by filtering to its exact resourceId; sibling or
+parent-scope meters (e.g. a security add-on billed on the parent `/servers/<name>` rather than the
+`/databases/<name>` you resized) don't move with the SKU and would otherwise blur the delta.
 
 ## Presenting results
 
@@ -390,6 +520,13 @@ so it needs no retail and is unaffected by a zeroed/absent `payGPrice`.
   and no `--currency`), say so explicitly.
 - Report the blended discount from the TOTAL row, and call out the largest-discount and
   zero-discount line items.
+- **Lead with actual when you have it; treat retail as context only.** Retail is the list / PAYG
+  price and can differ from what an agreement actually pays, so when actual cost data exists present
+  the **actual** figure as the headline and show retail only as a separately labeled cross-check —
+  never quote the retail number as the saving. Do not editorialize about the size of any gap between
+  the two.
+- **If the user asked for a yearly figure, give the annualized number** (`delta --annual`) and label
+  it a forward-looking run-rate projection, not measured actuals.
 - For every `UNKNOWN`/`UNMATCHED`, say exactly which command/field would resolve it.
 - Never present a number that isn't in the pasted data or the calculator output.
 

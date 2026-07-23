@@ -277,6 +277,122 @@ class DeltaMath(unittest.TestCase):
         self.assertEqual(got, ["vm1", "stor1"])
 
 
+class Annualization(unittest.TestCase):
+    """Locks --annual: yearly = monthly run-rate x 12, projection-labeled, window-gated."""
+
+    def test_annual_is_monthly_times_twelve(self):
+        # 30-day $100 -> $80 window. Monthly run-rate delta is normalized; yearly
+        # must be exactly monthly x 12 (and equal to daily-rate x 365.25).
+        before = {"r1": {"label": "r1", "actual": 100.0}}
+        after = {"r1": {"label": "r1", "actual": 80.0}}
+        rows, norm, single = actualize.compute_delta(before, after, 30, 30, None, False)
+        data = json.loads(actualize.render_delta(
+            rows, [], "USD", "json", norm, single, 30, 30, annual=True))
+        r = data["lineItems"][0]
+        self.assertAlmostEqual(r["deltaYear"], r["deltaMonth"] * 12, places=6)
+        self.assertAlmostEqual(r["deltaYear"],
+                               -20.0 / 30 * actualize.DAYS_PER_MONTH * 12, places=6)
+        # 30.4375 * 12 == 365.25 -> yearly is also raw daily rate x 365.25 days.
+        self.assertAlmostEqual(r["deltaYear"], -20.0 / 30 * 365.25, places=6)
+        self.assertTrue(data["annualized"])
+        self.assertAlmostEqual(data["totals"]["deltaAnnual"],
+                               data["totals"]["deltaMonthly"] * 12, places=6)
+
+    def test_annual_column_present_only_when_requested(self):
+        before = {"r1": {"label": "r1", "actual": 100.0}}
+        after = {"r1": {"label": "r1", "actual": 80.0}}
+        rows, norm, single = actualize.compute_delta(before, after, 30, 30, None, False)
+        without = actualize.render_delta(rows, [], "USD", "md", norm, single, 30, 30)
+        self.assertNotIn("Chg actual/yr", without)
+        rows2, norm2, single2 = actualize.compute_delta(before, after, 30, 30, None, False)
+        with_yr = actualize.render_delta(
+            rows2, [], "USD", "md", norm2, single2, 30, 30, annual=True)
+        self.assertIn("Chg actual/yr", with_yr)
+        self.assertIn("annualized run-rate", with_yr)
+
+    def test_annual_without_window_is_omitted_with_note(self):
+        # No window days -> no monthly run-rate -> cannot annualize; column omitted,
+        # yearly totals stay UNKNOWN (never fabricated) and a note explains why.
+        before = {"r1": {"label": "r1", "actual": 100.0}}
+        after = {"r1": {"label": "r1", "actual": 80.0}}
+        rows, norm, single = actualize.compute_delta(before, after, None, None, None, False)
+        out = actualize.render_delta(
+            rows, [], "USD", "md", norm, single, None, None, annual=True)
+        self.assertNotIn("Chg actual/yr", out)
+        self.assertIn("annualization needs a monthly run-rate", out)
+        data = json.loads(actualize.render_delta(
+            rows, [], "USD", "json", norm, single, None, None, annual=True))
+        self.assertFalse(data["annualized"])
+        self.assertIsNone(data["totals"]["deltaAnnual"])
+
+    def test_annual_single_runrate_removed_projection(self):
+        # Single-period run-rate (projected reduction if removed): yearly column
+        # header names the removal projection and equals monthly x 12.
+        before = {"r1": {"label": "r1", "actual": 90.0}}
+        rows, norm, single = actualize.compute_delta(before, None, 30, None, None, False)
+        self.assertTrue(single)
+        out = actualize.render_delta(
+            rows, [], "USD", "md", norm, single, 30, None, annual=True)
+        self.assertIn("Proj. change/yr if removed", out)
+        data = json.loads(actualize.render_delta(
+            rows, [], "USD", "json", norm, single, 30, None, annual=True))
+        r = data["lineItems"][0]
+        self.assertAlmostEqual(r["deltaYear"], r["deltaMonth"] * 12, places=6)
+
+    def test_non_annual_json_schema_unchanged(self):
+        # Regression guard: without --annual, the JSON must carry NO annual keys and
+        # line items must NOT gain a deltaYear field (backward-compatible schema).
+        before = {"r1": {"label": "r1", "actual": 100.0}}
+        after = {"r1": {"label": "r1", "actual": 80.0}}
+        rows, norm, single = actualize.compute_delta(before, after, 30, 30, None, False)
+        data = json.loads(actualize.render_delta(
+            rows, [], "USD", "json", norm, single, 30, 30))  # annual defaults False
+        self.assertNotIn("annualized", data)
+        self.assertNotIn("deltaAnnual", data["totals"])
+        self.assertNotIn("deltaYear", data["lineItems"][0])
+        # And the row dicts themselves must be untouched (no mutation side-effect).
+        self.assertNotIn("deltaYear", rows[0])
+
+    def test_annual_render_does_not_mutate_rows_for_later_reuse(self):
+        # Rendering with annual=True must not contaminate the caller's rows: a
+        # subsequent non-annual render of the SAME list must still omit deltaYear.
+        before = {"r1": {"label": "r1", "actual": 100.0}}
+        after = {"r1": {"label": "r1", "actual": 80.0}}
+        rows, norm, single = actualize.compute_delta(before, after, 30, 30, None, False)
+        actualize.render_delta(rows, [], "USD", "json", norm, single, 30, 30, annual=True)
+        self.assertNotIn("deltaYear", rows[0])  # caller's list untouched
+        data = json.loads(actualize.render_delta(
+            rows, [], "USD", "json", norm, single, 30, 30))  # reuse, non-annual
+        self.assertNotIn("annualized", data)
+        self.assertNotIn("deltaAnnual", data["totals"])
+        self.assertNotIn("deltaYear", data["lineItems"][0])
+
+    def test_annual_mixes_known_and_unknown_rows(self):
+        # A known row and an UNKNOWN (actual-unknown) row under --annual: the known
+        # row annualizes, the UNKNOWN stays UNKNOWN and is excluded from the total.
+        before = [actualize.normalize({"resourceName": "vm1", "date": "2026-01-01",
+                                       "costInBillingCurrency": 30, "billingCurrency": "USD"}),
+                  actualize.normalize({"resourceName": "vm2", "date": "2026-01-01",
+                                       "billingCurrency": "USD"})]  # actual unknown
+        after = [actualize.normalize({"resourceName": "vm1", "date": "2026-02-01",
+                                      "costInBillingCurrency": 20, "billingCurrency": "USD"}),
+                 actualize.normalize({"resourceName": "vm2", "date": "2026-02-01",
+                                      "billingCurrency": "USD"})]  # actual unknown
+        rows, norm, single = actualize.compute_delta(
+            actualize.resource_actuals(before, "resource"),
+            actualize.resource_actuals(after, "resource"), 1, 1, None, False)
+        data = json.loads(actualize.render_delta(
+            rows, [], "USD", "json", norm, single, 1, 1, annual=True))
+        byitem = {r["item"]: r for r in data["lineItems"]}
+        self.assertAlmostEqual(byitem["vm1"]["deltaYear"],
+                               byitem["vm1"]["deltaMonth"] * 12, places=6)
+        self.assertTrue(byitem["vm2"]["status"].startswith("UNKNOWN"))
+        self.assertIsNone(byitem["vm2"]["deltaYear"])
+        # TOTAL annual reflects only the fully-known vm1.
+        self.assertAlmostEqual(data["totals"]["deltaAnnual"],
+                               byitem["vm1"]["deltaYear"], places=6)
+
+
 class SavingsMode(unittest.TestCase):
     def test_unmatched_excluded(self):
         recs = _recs("modern-usage.json")
