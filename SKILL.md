@@ -1,17 +1,16 @@
 ---
 name: actualize
 description: >-
-  Determine the ACTUAL (effective / negotiated / reservation- and savings-plan-adjusted)
-  cost of Azure resources versus RETAIL (list / pay-as-you-go) price, with the percent
-  difference for each line item. Works even for Azure tenants this skill cannot reach:
-  it emits Azure Cloud Shell commands to copy-paste, and ingests the results pasted back.
-  Also converts a pasted table of USD cost *reductions* into ACTUAL savings per line item,
-  and computes the change in ACTUAL cost when resources are updated or deleted (before/after,
-  or projected monthly run-rate if removed). Every number is backed by real Azure Cost
-  Management / Consumption / FOCUS data — the skill NEVER guesses, assumes, or fabricates a
-  price. Works across Azure agreement / billing types, and still produces
-  a retail-vs-actual comparison when an export omits list price by enriching retail from the
-  public Azure Retail Prices API.
+  Use for Azure actual versus retail cost reports, pasted exports, proposed USD retail
+  reductions, resource removal, and before/after or annual run-rate comparisons.
+  Includes mixed currencies and requests to label everything USD: never relabel or
+  sum different currencies. Run the bundled calculator for financial results;
+  do not calculate them yourself. Uses Cost Management, Consumption or FOCUS
+  evidence, including negotiated, reservation and savings-plan-adjusted costs.
+  Never guess prices or discounts. For unreachable tenants, emit Azure Cloud Shell
+  commands and ingest pasted results. When exports omit list price, enrich retail
+  only from the public Azure Retail Prices API without guessing ambiguous SKUs.
+  Works across Azure agreement and billing types.
 ---
 
 # Actualize — get the actual cost of Azure resources
@@ -29,6 +28,17 @@ the data, output `UNKNOWN` / `UNMATCHED` for that cell — **do not** infer, int
 look up a "typical" discount. The only sanctioned external lookup is the anonymous **Azure
 Retail Prices API** for *retail* rates, and even then it is a labeled cross-check, never a
 substitute for actual cost data.
+
+Run the bundled calculator for every financial result, even when the input already
+contains actual costs or the requested total looks simple. Reading the data is not a
+calculator run. Totals, rounding, savings, percentages and projections must come from
+a successful `scripts/actualize.py` invocation, never mental arithmetic, shell arithmetic
+or a separate calculation script. You may quote supplied numbers as source data.
+
+Do not add calculated what-if ranges or lower bounds outside the calculator. In
+particular, ambiguous retail candidates do not justify a cheapest-SKU estimate,
+even if labeled hypothetical. Keep the calculator's `UNKNOWN` values and explain
+which SKU or meter evidence would resolve them.
 
 ## Core method (why this is the right approach)
 
@@ -62,7 +72,10 @@ Currency is a **label/unit**, never a fabricated cost, so it follows a fixed pre
 USD is a *labeling* assumption applied only when the data has no currency and none was given; it
 never changes, invents, or converts a cost figure. **Genuinely mixed-currency data is never coerced
 to USD** — it stays `MIXED(...)` and its totals are not aggregated, even if `--currency USD` is
-passed. When results rest on the assumed default (no currency in the data), **say so** when
+passed. If the user asks to label everything USD for a combined total, explain that
+relabeling would change the meaning of the amounts. Run the calculator on the
+unchanged input and return its separate currency labels and nonaggregated total.
+When results rest on the assumed default (no currency in the data), **say so** when
 presenting: e.g. "amounts assumed USD; include `billingCurrency` or pass `--currency` to change."
 The calculator's constant `DEFAULT_CURRENCY` (in `scripts/actualize.py`) is the single source of
 truth, and `--retail-currency` / `fetch_retail.py --currency` default to USD to match.
@@ -143,13 +156,38 @@ identical; only the transport differs.
    resource" below).
 2. **Emit a Cloud Shell command** (below) for the user to run in their tenant.
 3. **User pastes the raw output back.** Save it verbatim to a file.
-4. **Run the calculator** — never hand-compute:
+4. **Run the calculator** using `report`, `savings` or `delta` for the request:
    ```bash
    python scripts/actualize.py report --input <pasted-file>
    python scripts/actualize.py savings --cost <pasted-file> --reductions <reduction-table>
    ```
-5. **Present** the returned markdown table as-is. Do not edit the numbers; if a cell says
-   `UNKNOWN`, explain what additional data would fill it.
+   Wait for a successful result before reporting financial findings. If execution fails,
+   diagnose the problem or explain that the result is unavailable; do not reconstruct it.
+5. **Present** the complete returned markdown table as-is, even for an actual-only
+   input or a request for a short answer. Keep explanations outside the table; if a cell
+   says `UNKNOWN`, explain what additional data would fill it.
+
+### Select the requested scope before calculating
+
+Use exact resource IDs and confirmed inventory; a shared name prefix does not
+establish that two plans have the same SKU or belong to the requested scope.
+For whole resources, use `delta --resources` with a resource list. For a regional
+or meter subset within one resource ID, first copy only the matching source rows
+to a separate input file, preserving their fields, cost values and dates. This
+selection needs no financial arithmetic or calculator changes. Then invoke the
+documented calculator command; use `--help` if needed rather than inspecting its
+implementation to rediscover supported options.
+
+For a database-only resize, exclude parent server charges. For removal of both
+a server and its databases, include all requested billing IDs. For Cosmos
+regional throughput, select the removed region's actual throughput records;
+do not divide account totals by region count or include unrelated storage and
+backup meters. If the regional identity is missing or ambiguous, ask for that
+evidence instead of assigning the charges.
+
+Keep the raw input, selected input and resource list files alongside the result
+so the calculation can be reviewed and reproduced. Do not delete these evidence
+files after reporting.
 
 ## Cloud Shell commands (copy-paste into the target tenant)
 
@@ -175,13 +213,31 @@ select it, so every later command runs against the correct billing scope:
 
 ```bash
 RES="my-app-plan"                        # the resource name the user gave
-az graph query -q "resources | where name =~ '$RES' | project name, resourceGroup, subscriptionId, id" -o table
+az graph query -q "resources | where name =~ '$RES' | project name, resourceGroup, subscriptionId, id" --query data -o table
 # then pin the subscription (and capture RG) from that result:
 SUB=<subscriptionId-from-above>
 RG=<resourceGroup-from-above>
 az account set --subscription "$SUB"
 az account show --query "{name:name, id:id}" -o table   # confirm you're where you expect
 ```
+
+For an access or subscription-scope recovery reply, include this discovery,
+`az account set --subscription "$SUB"` and confirmation sequence in the reply
+itself, before the corrected cost query. Telling the user to switch subscriptions
+in prose, or only showing the currently selected subscription, is insufficient.
+Do not request a new role assignment until the resource's subscription is confirmed.
+`az account set` changes only the local CLI subscription context; it does not
+modify Azure resources or roles. Include it even when the user asks for read-only
+Azure commands. After discovery, the reply must contain:
+
+```bash
+SUB="<resource-subscriptionId-from-discovery>"
+az account set --subscription "$SUB"
+az account show --query "{name:name, id:id}" -o table
+```
+
+Repeat these commands in the recovery reply even if an earlier turn included
+them; the user needs a complete sequence for the current error.
 
 If Resource Graph isn't available, `az resource list --name "$RES"` in each candidate subscription
 works but is slower. Then set the period window:
@@ -438,6 +494,12 @@ reservation caveat stated):
 python scripts/actualize.py delta --before current.csv --group-by resource --decreases-only
 ```
 
+For a removal request, return the complete `delta` table with its original
+Before, change, projected change, percentage and Status columns. Keep negative
+projected changes and `RUN-RATE` markers. You may describe the positive reduction
+magnitude in prose, but do not replace the table with a positive-only summary.
+Include the reservation/savings-plan cash caveat alongside it.
+
 Restrict to specific resources (paste a list or a table of resourceIds/names). Requested items
 with no backing actual-cost data are reported **NOT FOUND** and excluded — never estimated:
 
@@ -515,7 +577,10 @@ parent-scope meters (e.g. a security add-on billed on the parent `/servers/<name
 
 ## Presenting results
 
-- Show the calculator's table verbatim; state the period, scope, currency, and whether costs
+- Show the calculator's entire table verbatim, including every header, row and column.
+  Keep empty Note columns, Savings, percentage changes, status values, signs and precision.
+  Do not rename headers, shorten resource IDs, add annotations inside cells, or replace
+  the table with bullets or a smaller summary table. State the period, scope, currency, and whether costs
   are **amortized** or **actual**. If the currency was **assumed USD** (no currency in the data
   and no `--currency`), say so explicitly.
 - Report the blended discount from the TOTAL row, and call out the largest-discount and
@@ -529,6 +594,11 @@ parent-scope meters (e.g. a security add-on billed on the parent `/servers/<name
   it a forward-looking run-rate projection, not measured actuals.
 - For every `UNKNOWN`/`UNMATCHED`, say exactly which command/field would resolve it.
 - Never present a number that isn't in the pasted data or the calculator output.
+  Quoted input values are source data, not permission to calculate a new financial result.
+  Keep any explanation or headline consistent with the successful calculator output.
+  Reuse the matching row, field, currency and period at the calculator's precision.
+  Do not shorten financial amounts with k/M/B suffixes or independently round them.
+  Omit a numeric headline if the calculator does not establish it.
 
 ## Field reference (what maps to what)
 

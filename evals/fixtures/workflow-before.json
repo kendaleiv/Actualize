@@ -1,0 +1,20 @@
+[
+  {"resourceId":"/subscriptions/0000/resourceGroups/demo/providers/Microsoft.Web/serverFarms/app-prod","date":"2026-04-01","costInBillingCurrency":12,"billingCurrency":"USD"},
+  {"resourceId":"/subscriptions/0000/resourceGroups/demo/providers/Microsoft.Web/serverFarms/app-prod","date":"2026-04-02","costInBillingCurrency":12,"billingCurrency":"USD"},
+  {"resourceId":"/subscriptions/0000/resourceGroups/demo/providers/Microsoft.Web/serverFarms/app-production","date":"2026-04-01","costInBillingCurrency":5,"billingCurrency":"USD"},
+  {"resourceId":"/subscriptions/0000/resourceGroups/demo/providers/Microsoft.Web/serverFarms/app-production","date":"2026-04-02","costInBillingCurrency":5,"billingCurrency":"USD"},
+  {"resourceId":"/subscriptions/0000/resourceGroups/demo/providers/Microsoft.Sql/servers/sql-east","meterName":"Security","date":"2026-04-01","costInBillingCurrency":3,"billingCurrency":"USD"},
+  {"resourceId":"/subscriptions/0000/resourceGroups/demo/providers/Microsoft.Sql/servers/sql-east","meterName":"Security","date":"2026-04-02","costInBillingCurrency":3,"billingCurrency":"USD"},
+  {"resourceId":"/subscriptions/0000/resourceGroups/demo/providers/Microsoft.Sql/servers/sql-east/databases/app-db","date":"2026-04-01","costInBillingCurrency":20,"billingCurrency":"USD"},
+  {"resourceId":"/subscriptions/0000/resourceGroups/demo/providers/Microsoft.Sql/servers/sql-east/databases/app-db","date":"2026-04-02","costInBillingCurrency":20,"billingCurrency":"USD"},
+  {"resourceId":"/subscriptions/0000/resourceGroups/demo/providers/Microsoft.Sql/servers/sql-west/databases/app-db","date":"2026-04-01","costInBillingCurrency":7,"billingCurrency":"USD"},
+  {"resourceId":"/subscriptions/0000/resourceGroups/demo/providers/Microsoft.Sql/servers/sql-west/databases/app-db","date":"2026-04-02","costInBillingCurrency":7,"billingCurrency":"USD"},
+  {"resourceId":"/subscriptions/0000/resourceGroups/demo/providers/Microsoft.DocumentDB/databaseAccounts/cosmos-demo","resourceLocation":"westus2","meterName":"Throughput","date":"2026-04-01","costInBillingCurrency":11,"billingCurrency":"USD"},
+  {"resourceId":"/subscriptions/0000/resourceGroups/demo/providers/Microsoft.DocumentDB/databaseAccounts/cosmos-demo","resourceLocation":"westus2","meterName":"Throughput","date":"2026-04-02","costInBillingCurrency":11,"billingCurrency":"USD"},
+  {"resourceId":"/subscriptions/0000/resourceGroups/demo/providers/Microsoft.DocumentDB/databaseAccounts/cosmos-demo","resourceLocation":"eastus","meterName":"Throughput","date":"2026-04-01","costInBillingCurrency":4,"billingCurrency":"USD"},
+  {"resourceId":"/subscriptions/0000/resourceGroups/demo/providers/Microsoft.DocumentDB/databaseAccounts/cosmos-demo","resourceLocation":"eastus","meterName":"Throughput","date":"2026-04-02","costInBillingCurrency":4,"billingCurrency":"USD"},
+  {"resourceId":"/subscriptions/0000/resourceGroups/demo/providers/Microsoft.DocumentDB/databaseAccounts/cosmos-demo","resourceLocation":"northeurope","meterName":"Throughput","date":"2026-04-01","costInBillingCurrency":7,"billingCurrency":"USD"},
+  {"resourceId":"/subscriptions/0000/resourceGroups/demo/providers/Microsoft.DocumentDB/databaseAccounts/cosmos-demo","resourceLocation":"northeurope","meterName":"Throughput","date":"2026-04-02","costInBillingCurrency":7,"billingCurrency":"USD"},
+  {"resourceId":"/subscriptions/0000/resourceGroups/demo/providers/Microsoft.DocumentDB/databaseAccounts/cosmos-demo","resourceLocation":"westus2","meterName":"Storage and backup","date":"2026-04-01","costInBillingCurrency":2,"billingCurrency":"USD"},
+  {"resourceId":"/subscriptions/0000/resourceGroups/demo/providers/Microsoft.DocumentDB/databaseAccounts/cosmos-demo","resourceLocation":"westus2","meterName":"Storage and backup","date":"2026-04-02","costInBillingCurrency":2,"billingCurrency":"USD"}
+]

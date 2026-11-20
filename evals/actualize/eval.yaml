@@ -1,0 +1,453 @@
+name: actualize-behavior
+description: Synthetic behavioral contracts for the Actualize Copilot skill.
+version: "1"
+defaults:
+  executor: copilot-sdk
+  model: gpt-5.3-codex
+  reasoning_effort: low
+  runs: 1
+  timeout: 5m
+  backend:
+    name: docker
+    args:
+      task-image: actualize-vally:0.21.0
+      grade-image: actualize-vally:0.21.0
+      task-network: none
+      grade-network: none
+      compose-file: ../docker/roles.yaml
+      task-env: [COPILOT_GITHUB_TOKEN, HTTPS_PROXY, HTTP_PROXY, NODE_USE_ENV_PROXY]
+      resources:
+        limits:
+          cpus: 2
+          memory: 2G
+agent_environment:
+  skills: [../../.eval-tools/skills/actualize]
+  files:
+    - src: ../../scripts/actualize.py
+      dest: scripts/actualize.py
+    - src: ../../scripts/fetch_retail.py
+      dest: scripts/fetch_retail.py
+  commands:
+    - test ! -e .grading
+grading_environment:
+  files:
+    - src: ../../.eval-tools/grading
+      dest: .grading
+scoring:
+  threshold: 1
+  timeout: 2m
+stimuli:
+  - name: standard-report
+    tags: {suite: smoke, contract: report}
+    constraints: &bounded
+      max_duration: 5m
+      max_tokens: 200000
+    agent_environment:
+      files:
+        - src: ../../samples/modern-usage.json
+          dest: inputs/modern-usage.json
+    prompt: >-
+      What did these Azure resources actually cost versus list price, per resource and
+      in total? The complete synthetic export is in inputs/modern-usage.json.
+      Keep this offline; no tenant access or network price lookups.
+    graders:
+      - type: skill-invocation
+        config: {required: [actualize]}
+      - type: program
+        config: {program: python3, args: [.grading/check_actualize.py], env: {ACTUALIZE_CASE: standard}}
+  - name: focus-report
+    tags: {contract: schemas}
+    constraints: *bounded
+    agent_environment:
+      files:
+        - src: ../../samples/focus.csv
+          dest: inputs/focus.csv
+    prompt: >-
+      Compare actual and retail Azure costs in inputs/focus.csv, including the total.
+      This synthetic FOCUS export is all the evidence; work offline.
+    graders:
+      - type: skill-invocation
+        config: {required: [actualize]}
+      - type: program
+        config: {program: python3, args: [.grading/check_actualize.py], env: {ACTUALIZE_CASE: focus}}
+  - name: legacy-report
+    tags: {contract: schemas}
+    constraints: *bounded
+    agent_environment:
+      files:
+        - src: ../../samples/legacy-usage.json
+          dest: inputs/legacy-usage.json
+    prompt: >-
+      Show actual versus retail cost per resource and in total for the synthetic legacy
+      Azure export inputs/legacy-usage.json. Do not fetch anything or assume a discount.
+    graders:
+      - type: skill-invocation
+        config: {required: [actualize]}
+      - type: program
+        config: {program: python3, args: [.grading/check_actualize.py], env: {ACTUALIZE_CASE: legacy}}
+  - name: actual-only-query
+    tags: {contract: schemas}
+    constraints: *bounded
+    agent_environment:
+      files:
+        - src: ../../samples/costmgmt-query.json
+          dest: inputs/costmgmt-query.json
+    prompt: >-
+      This is a synthetic amortized Cost Management response:
+      inputs/costmgmt-query.json. Report actual versus retail per resource and in total.
+      There is no other cost evidence and no live tenant access.
+    graders:
+      - type: skill-invocation
+        config: {required: [actualize]}
+      - type: program
+        config: {program: python3, args: [.grading/check_actualize.py], env: {ACTUALIZE_CASE: query}}
+  - name: ambiguous-enrichment
+    tags: {suite: smoke, contract: uncertainty}
+    constraints: *bounded
+    agent_environment:
+      files:
+        - src: ../../samples/zeroed-retail.json
+          dest: inputs/zeroed-retail.json
+        - src: ../../samples/retail-map.csv
+          dest: inputs/retail-map.csv
+    prompt: >-
+      Report actual versus retail Azure cost from inputs/zeroed-retail.json using the
+      supplied synthetic retail map inputs/retail-map.csv. No network lookups.
+      If the SQL meter has several SKUs, could you just pick the cheapest to complete
+      the total? Explain any remaining uncertainty.
+    graders:
+      - type: skill-invocation
+        config: {required: [actualize]}
+      - type: program
+        config: {program: python3, args: [.grading/check_actualize.py], env: {ACTUALIZE_CASE: enrichment}}
+  - name: unmatched-reductions
+    tags: {contract: savings}
+    constraints: *bounded
+    agent_environment:
+      files:
+        - src: ../../samples/modern-usage.json
+          dest: inputs/modern-usage.json
+        - src: ../../samples/reductions.md
+          dest: inputs/reductions.md
+    prompt: >-
+      What actual Azure savings do the proposed monthly retail cuts in
+      inputs/reductions.md produce? The complete synthetic cost evidence is
+      inputs/modern-usage.json. Show every proposed cut and the total, including
+      anything that cannot be matched. Work offline.
+    graders:
+      - type: skill-invocation
+        config: {required: [actualize]}
+      - type: program
+        config: {program: python3, args: [.grading/check_actualize.py], env: {ACTUALIZE_CASE: savings}}
+  - name: before-after-delta
+    tags: {contract: delta}
+    constraints: *bounded
+    agent_environment:
+      files: &windows
+        - src: ../../samples/delta-before.json
+          dest: inputs/delta-before.json
+        - src: ../../samples/delta-after.json
+          dest: inputs/delta-after.json
+    prompt: >-
+      Compare actual Azure costs in inputs/delta-before.json and inputs/delta-after.json.
+      They are complete synthetic daily windows before and after deployment.
+      Show all resources and the total, including additions, removals and unchanged
+      resources. Include the monthly run rate. Work offline.
+    graders:
+      - type: skill-invocation
+        config: {required: [actualize]}
+      - type: program
+        config: {program: python3, args: [.grading/check_actualize.py], env: {ACTUALIZE_CASE: delta}}
+  - name: annual-delta
+    tags: {suite: smoke, contract: annual}
+    constraints: *bounded
+    agent_environment:
+      files: *windows
+    prompt: >-
+      What is the actual yearly cost change after this Azure deployment?
+      inputs/delta-before.json and inputs/delta-after.json contain the complete
+      synthetic daily cost windows, fully before and after the change.
+      Show every resource and the total, with monthly and yearly amounts and
+      explain what the yearly result represents. Work offline.
+    graders:
+      - type: skill-invocation
+        config: {required: [actualize]}
+      - type: program
+        config: {program: python3, args: [.grading/check_actualize.py], env: {ACTUALIZE_CASE: annual}}
+  - name: missing-actuals
+    tags: {contract: uncertainty}
+    constraints: *bounded
+    agent_environment:
+      files:
+        - src: ../fixtures/missing-actuals.json
+          dest: inputs/missing-actuals.json
+    prompt: >-
+      Report actual versus retail Azure cost from inputs/missing-actuals.json.
+      Could you use a typical discount if the actual cost is null? There is no
+      other evidence. Show the table and total; do not make network lookups.
+    graders:
+      - type: skill-invocation
+        config: {required: [actualize]}
+      - type: program
+        config: {program: python3, args: [.grading/check_actualize.py], env: {ACTUALIZE_CASE: missing-actuals}}
+  - name: missing-window
+    tags: {contract: uncertainty}
+    constraints: *bounded
+    turns:
+      - >-
+        I want yearly actual Azure savings if I remove a VM. I have an actual spend
+        amount but no dates or window length. What else do you need?
+      - >-
+        I still cannot provide any dates or period length. Can you just assume
+        a month and give the annual saving?
+    graders:
+      - type: skill-invocation
+        config: {required: [actualize]}
+      - type: program
+        config: {program: python3, args: [.grading/check_actualize.py], env: {ACTUALIZE_CASE: missing-window, ACTUALIZE_TURN: "0"}}
+      - type: program
+        config: {program: python3, args: [.grading/check_actualize.py], env: {ACTUALIZE_CASE: missing-window, ACTUALIZE_TURN: "1"}}
+  - name: mixed-currency
+    tags: {contract: currency}
+    constraints: *bounded
+    agent_environment:
+      files:
+        - src: ../fixtures/mixed-currency.json
+          dest: inputs/mixed-currency.json
+    prompt: >-
+      Report actual versus retail Azure costs from inputs/mixed-currency.json.
+      Please show the per-resource table and total. Can you label everything
+      USD to make a combined total? Use only this synthetic file, offline.
+    graders:
+      - type: skill-invocation
+        config: {required: [actualize]}
+      - type: program
+        config: {program: python3, args: [.grading/check_actualize.py], env: {ACTUALIZE_CASE: mixed-currency}}
+  - name: default-currency
+    tags: {contract: currency}
+    constraints: *bounded
+    agent_environment:
+      files:
+        - src: ../fixtures/default-currency.json
+          dest: inputs/default-currency.json
+    prompt: >-
+      Compare actual and retail Azure cost per resource and in total from
+      inputs/default-currency.json. I do not have a currency label.
+      Explain any assumption you make. This is synthetic data; work offline.
+    graders:
+      - type: skill-invocation
+        config: {required: [actualize]}
+      - type: program
+        config: {program: python3, args: [.grading/check_actualize.py], env: {ACTUALIZE_CASE: default-currency}}
+  - name: cloud-shell-handoff
+    tags: {contract: collection}
+    constraints: *bounded
+    prompt: >-
+      What did the Azure App Service plan web-prod actually cost last month?
+      This workstation cannot reach that tenant and you have no cost export.
+      Give me read-only Azure Cloud Shell Bash steps to collect the evidence
+      and paste it back. The default subscription may be wrong.
+    graders:
+      - type: skill-invocation
+        config: {required: [actualize]}
+      - type: program
+        config: {program: python3, args: [.grading/check_actualize.py], env: {ACTUALIZE_CASE: cloud-shell}}
+  - name: collection-recovery
+    tags: {suite: workflows, contract: recovery}
+    constraints: *bounded
+    turns:
+      - >-
+        What did the Azure App Service plan web-prod actually cost last month?
+        You cannot access my tenant. Give me Azure Cloud Shell Bash steps to
+        collect the evidence; the default subscription may be wrong.
+      - >-
+        Someone suggested Tier 1. Its response was
+        [{"resourceName":"web-prod","quantity":744,"costInBillingCurrency":null,"pretaxCost":"None"}].
+        There are no other cost rows. Is that zero spend? What should I run next?
+      - >-
+        The Cost Management query returned RBACAccessDenied in the subscription
+        Cloud Shell selected by default. Should I immediately request more roles?
+        Give me the next read-only commands.
+      - >-
+        I confirmed the correct subscription. A colleague's async Cost Details report
+        returned HTTP 406 with no Location header, and the polling command keeps saying
+        curl has a blank URL. Give me only a corrected Cloud Shell Bash collection
+        block and a brief explanation. I need actual cost, not per-line retail.
+      - >-
+        The synchronous query now succeeded. Its complete synthetic response is
+        {"properties":{"columns":[{"name":"PreTaxCost","type":"Number"},{"name":"ResourceId","type":"String"},{"name":"Currency","type":"String"}],"rows":[[42.8544,"/subscriptions/0000/resourceGroups/rg-prod/providers/Microsoft.Compute/virtualMachines/vm-app01","USD"],[17.0,"/subscriptions/0000/resourceGroups/rg-prod/providers/Microsoft.Storage/storageAccounts/stproddata01","USD"],[43.5,"/subscriptions/0000/resourceGroups/rg-prod/providers/Microsoft.Network/egress-westus","USD"]]}}.
+        These are all returned resources; report each one and the total versus retail.
+        This pasted response is the only cost evidence. Continue offline.
+    graders:
+      - type: skill-invocation
+        config: {required: [actualize]}
+      - type: program
+        config: {program: python3, args: [.grading/check_actualize.py], env: {ACTUALIZE_CASE: cloud-shell, ACTUALIZE_TURN: "0"}}
+      - type: program
+        config: {program: python3, args: [.grading/check_actualize.py], env: {ACTUALIZE_CASE: null-recovery, ACTUALIZE_TURN: "1"}}
+      - type: program
+        config: {program: python3, args: [.grading/check_actualize.py], env: {ACTUALIZE_CASE: scope-recovery, ACTUALIZE_TURN: "2"}}
+      - type: program
+        config: {program: python3, args: [.grading/check_actualize.py], env: {ACTUALIZE_CASE: async-recovery, ACTUALIZE_TURN: "3"}}
+      - type: program
+        config: {program: python3, args: [.grading/check_actualize.py], env: {ACTUALIZE_CASE: query, ACTUALIZE_TURN: "4"}}
+  - name: deployment-timing
+    tags: {suite: workflows, contract: deployment}
+    constraints: *bounded
+    turns:
+      - >-
+        A PR merging an Azure SQL resize from 4 to 2 vCore landed on May 1.
+        It rolled out separately in two regions, but I do not know their deploy times.
+        What are the actual yearly savings? You have no tenant access or cost export.
+        Give the read-only collection workflow before estimating anything.
+      - >-
+        Someone gave me resourcechanges | where resourceId =~ '$DBID', but Azure
+        says Failed to resolve column named resourceId. Correct that Cloud Shell Bash
+        query for the real resource change history property. Include subscription
+        selection and return the actual data, not the count wrapper.
+      - >-
+        Synthetic change records confirm east changed on 2026-05-08 and west on
+        2026-05-10. Both database IDs are under subscription 0000, resource group demo:
+        /subscriptions/0000/resourceGroups/demo/providers/Microsoft.Sql/servers/sql-east/databases/app-db
+        and /subscriptions/0000/resourceGroups/demo/providers/Microsoft.Sql/servers/sql-west/databases/app-db.
+        Use the complete baseline 2026-04-01 through 2026-04-02 and after window
+        2026-06-01 through 2026-06-02. Give Cloud Shell Bash to collect daily amortized
+        costs for exactly these two databases, not their parent servers. Save under
+        ~ or /tmp and print the files; Cloud Shell is not my local Downloads folder.
+      - >-
+        Here are the complete daily amortized USD results for those two-day windows.
+        Before:
+        [{"resourceId":"/subscriptions/0000/resourceGroups/demo/providers/Microsoft.Sql/servers/sql-east/databases/app-db","date":"2026-04-01","costInBillingCurrency":20,"billingCurrency":"USD"},{"resourceId":"/subscriptions/0000/resourceGroups/demo/providers/Microsoft.Sql/servers/sql-east/databases/app-db","date":"2026-04-02","costInBillingCurrency":20,"billingCurrency":"USD"},{"resourceId":"/subscriptions/0000/resourceGroups/demo/providers/Microsoft.Sql/servers/sql-west/databases/app-db","date":"2026-04-01","costInBillingCurrency":7,"billingCurrency":"USD"},{"resourceId":"/subscriptions/0000/resourceGroups/demo/providers/Microsoft.Sql/servers/sql-west/databases/app-db","date":"2026-04-02","costInBillingCurrency":7,"billingCurrency":"USD"}]
+        After:
+        [{"resourceId":"/subscriptions/0000/resourceGroups/demo/providers/Microsoft.Sql/servers/sql-east/databases/app-db","date":"2026-06-01","costInBillingCurrency":8,"billingCurrency":"USD"},{"resourceId":"/subscriptions/0000/resourceGroups/demo/providers/Microsoft.Sql/servers/sql-east/databases/app-db","date":"2026-06-02","costInBillingCurrency":8,"billingCurrency":"USD"},{"resourceId":"/subscriptions/0000/resourceGroups/demo/providers/Microsoft.Sql/servers/sql-west/databases/app-db","date":"2026-06-01","costInBillingCurrency":3,"billingCurrency":"USD"},{"resourceId":"/subscriptions/0000/resourceGroups/demo/providers/Microsoft.Sql/servers/sql-west/databases/app-db","date":"2026-06-02","costInBillingCurrency":3,"billingCurrency":"USD"}]
+        Report the monthly and annual cost change for both databases and the total.
+        All evidence is synthetic; continue offline.
+    graders:
+      - type: skill-invocation
+        config: {required: [actualize]}
+      - type: program
+        config: {program: python3, args: [.grading/check_actualize.py], env: {ACTUALIZE_CASE: deployment, ACTUALIZE_TURN: "0"}}
+      - type: program
+        config: {program: python3, args: [.grading/check_actualize.py], env: {ACTUALIZE_CASE: graph-recovery, ACTUALIZE_TURN: "1"}}
+      - type: program
+        config: {program: python3, args: [.grading/check_actualize.py], env: {ACTUALIZE_CASE: deployment-query, ACTUALIZE_TURN: "2"}}
+      - type: program
+        config: {program: python3, args: [.grading/check_actualize.py], env: {ACTUALIZE_CASE: deployment-result, ACTUALIZE_TURN: "3"}}
+  - name: commitment-removal
+    tags: {suite: workflows, contract: commitment}
+    constraints: *bounded
+    agent_environment:
+      files:
+        - src: ../../samples/delta-before.json
+          dest: inputs/delta-before.json
+    turns:
+      - >-
+        If we remove all the Azure resources in inputs/delta-before.json, what is
+        the monthly actual run-rate reduction per resource and in total?
+        These are synthetic amortized daily costs and some resources have prepaid
+        reservations or savings plans. Does that amount become immediate cash savings?
+        Work offline.
+      - >-
+        I want actual realized savings, not estimated savings. Can we call that
+        amount measured savings now? We still have only the baseline export,
+        no post-deletion cost data. Answer qualitatively without repeating amounts:
+        what can we claim, and what evidence would establish realized savings?
+    graders:
+      - type: skill-invocation
+        config: {required: [actualize]}
+      - type: program
+        config: {program: python3, args: [.grading/check_actualize.py], env: {ACTUALIZE_CASE: removal, ACTUALIZE_TURN: "0"}}
+      - type: program
+        config: {program: python3, args: [.grading/check_actualize.py], env: {ACTUALIZE_CASE: realized-removal, ACTUALIZE_TURN: "1"}}
+  - name: exact-plan-identity
+    tags: {suite: workflows, contract: scope}
+    constraints: *bounded
+    agent_environment:
+      files: &workflow_windows
+        - src: ../fixtures/workflow-before.json
+          dest: inputs/workflow-before.json
+        - src: ../fixtures/workflow-after.json
+          dest: inputs/workflow-after.json
+    prompt: >-
+      The live synthetic inventory identifies app-prod as EP3 and app-production as
+      EP1. Both names share a prefix but they are separate plans. Report monthly
+      and annual actual cost change for ONLY app-prod, whose exact ID is
+      /subscriptions/0000/resourceGroups/demo/providers/Microsoft.Web/serverFarms/app-prod.
+      The complete two-day windows in inputs/workflow-before.json and
+      inputs/workflow-after.json include other resources. Select only the requested
+      plan, preserve source cost values and dates, and use the calculator offline.
+      I am asking about cost, not whether downsizing is operationally safe.
+    graders:
+      - type: skill-invocation
+        config: {required: [actualize]}
+      - type: program
+        config: {program: python3, args: [.grading/check_actualize.py], env: {ACTUALIZE_CASE: identity}}
+  - name: sql-database-resize-scope
+    tags: {suite: workflows, contract: scope}
+    constraints: *bounded
+    agent_environment:
+      files: *workflow_windows
+    prompt: >-
+      Report monthly and annual actual cost change for resizing only this database:
+      /subscriptions/0000/resourceGroups/demo/providers/Microsoft.Sql/servers/sql-east/databases/app-db.
+      Use the complete two-day synthetic windows inputs/workflow-before.json and
+      inputs/workflow-after.json. Do not include the parent server's security meter
+      or the similarly named database on sql-west. Select the requested scope without
+      changing source cost values or dates. Work offline using the calculator.
+    graders:
+      - type: skill-invocation
+        config: {required: [actualize]}
+      - type: program
+        config: {program: python3, args: [.grading/check_actualize.py], env: {ACTUALIZE_CASE: sql-resize}}
+  - name: sql-server-and-database-removal
+    tags: {suite: workflows, contract: scope}
+    constraints: *bounded
+    agent_environment:
+      files:
+        - src: ../fixtures/workflow-before.json
+          dest: inputs/workflow-before.json
+    prompt: >-
+      What monthly and annual actual run-rate would we stop incurring if we delete
+      BOTH /subscriptions/0000/resourceGroups/demo/providers/Microsoft.Sql/servers/sql-east
+      and its database
+      /subscriptions/0000/resourceGroups/demo/providers/Microsoft.Sql/servers/sql-east/databases/app-db?
+      Include server-level security and database costs, but not sql-west or unrelated
+      services. inputs/workflow-before.json contains the complete two-day synthetic
+      amortized baseline. There is no after export. Preserve source values and dates;
+      calculate offline and explain whether this is measured or projected savings.
+    graders:
+      - type: skill-invocation
+        config: {required: [actualize]}
+      - type: program
+        config: {program: python3, args: [.grading/check_actualize.py], env: {ACTUALIZE_CASE: sql-removal}}
+  - name: cosmos-removed-region-throughput
+    tags: {suite: workflows, contract: scope}
+    constraints: *bounded
+    agent_environment:
+      files:
+        - src: ../fixtures/workflow-before.json
+          dest: inputs/workflow-before.json
+    prompt: >-
+      We removed westus2 from the single Cosmos account
+      /subscriptions/0000/resourceGroups/demo/providers/Microsoft.DocumentDB/databaseAccounts/cosmos-demo.
+      Estimate ONLY the stopped throughput monthly and annual actual run-rate from
+      inputs/workflow-before.json, a complete two-day synthetic baseline. Regions have
+      unequal throughput costs and use the SAME account resourceId. Use the actual
+      westus2 Throughput records, not account cost divided by region count; storage
+      and backup are outside this question. Preserve selected source rows and dates,
+      use the calculator, and label the result as a projection because no after data
+      is available. Work offline.
+    graders:
+      - type: skill-invocation
+        config: {required: [actualize]}
+      - type: program
+        config: {program: python3, args: [.grading/check_actualize.py], env: {ACTUALIZE_CASE: cosmos-region}}
+  - name: unrelated-no-activation
+    tags: {contract: activation}
+    constraints: *bounded
+    prompt: "Sort these words alphabetically and reply only with the words: violet, amber, blue."
+    graders:
+      - type: skill-invocation
+        config: {disallowed: [actualize]}
+      - type: program
+        config: {program: python3, args: [.grading/check_actualize.py], env: {ACTUALIZE_CASE: unrelated}}

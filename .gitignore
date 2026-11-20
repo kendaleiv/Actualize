@@ -15,3 +15,12 @@ gaac-*
 Thumbs.db
 .vscode/
 .idea/
+
+# Development evaluation tooling and local run evidence
+node_modules/
+vally-results/
+.eval-workspaces/
+.eval-tools/
+.env
+.env.*
+!.env.example

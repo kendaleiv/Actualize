@@ -1,0 +1,4 @@
+[
+  {"resourceName": "usd-resource", "quantity": 1, "payGPrice": 10, "costInBillingCurrency": 6, "billingCurrency": "USD"},
+  {"resourceName": "eur-resource", "quantity": 1, "payGPrice": 10, "costInBillingCurrency": 6, "billingCurrency": "EUR"}
+]

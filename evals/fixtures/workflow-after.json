@@ -1,0 +1,12 @@
+[
+  {"resourceId":"/subscriptions/0000/resourceGroups/demo/providers/Microsoft.Web/serverFarms/app-prod","date":"2026-06-01","costInBillingCurrency":4,"billingCurrency":"USD"},
+  {"resourceId":"/subscriptions/0000/resourceGroups/demo/providers/Microsoft.Web/serverFarms/app-prod","date":"2026-06-02","costInBillingCurrency":4,"billingCurrency":"USD"},
+  {"resourceId":"/subscriptions/0000/resourceGroups/demo/providers/Microsoft.Web/serverFarms/app-production","date":"2026-06-01","costInBillingCurrency":2,"billingCurrency":"USD"},
+  {"resourceId":"/subscriptions/0000/resourceGroups/demo/providers/Microsoft.Web/serverFarms/app-production","date":"2026-06-02","costInBillingCurrency":2,"billingCurrency":"USD"},
+  {"resourceId":"/subscriptions/0000/resourceGroups/demo/providers/Microsoft.Sql/servers/sql-east","meterName":"Security","date":"2026-06-01","costInBillingCurrency":3,"billingCurrency":"USD"},
+  {"resourceId":"/subscriptions/0000/resourceGroups/demo/providers/Microsoft.Sql/servers/sql-east","meterName":"Security","date":"2026-06-02","costInBillingCurrency":3,"billingCurrency":"USD"},
+  {"resourceId":"/subscriptions/0000/resourceGroups/demo/providers/Microsoft.Sql/servers/sql-east/databases/app-db","date":"2026-06-01","costInBillingCurrency":8,"billingCurrency":"USD"},
+  {"resourceId":"/subscriptions/0000/resourceGroups/demo/providers/Microsoft.Sql/servers/sql-east/databases/app-db","date":"2026-06-02","costInBillingCurrency":8,"billingCurrency":"USD"},
+  {"resourceId":"/subscriptions/0000/resourceGroups/demo/providers/Microsoft.Sql/servers/sql-west/databases/app-db","date":"2026-06-01","costInBillingCurrency":3,"billingCurrency":"USD"},
+  {"resourceId":"/subscriptions/0000/resourceGroups/demo/providers/Microsoft.Sql/servers/sql-west/databases/app-db","date":"2026-06-02","costInBillingCurrency":3,"billingCurrency":"USD"}
+]

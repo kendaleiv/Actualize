@@ -1,0 +1,152 @@
+{
+  "standard": {
+    "command": "report",
+    "inputs": {"--input": "samples/modern-usage.json"},
+    "table": "standard.md"
+  },
+  "focus": {
+    "command": "report",
+    "inputs": {"--input": "samples/focus.csv"},
+    "table": "standard.md"
+  },
+  "legacy": {
+    "command": "report",
+    "inputs": {"--input": "samples/legacy-usage.json"},
+    "table": "legacy.md"
+  },
+  "query": {
+    "command": "report",
+    "inputs": {"--input": "samples/costmgmt-query.json"},
+    "table": "query.md"
+  },
+  "enrichment": {
+    "command": "report",
+    "inputs": {"--input": "samples/zeroed-retail.json", "--retail-map": "samples/retail-map.csv"},
+    "table": "enrichment.md",
+    "required": ["ambig"]
+  },
+  "savings": {
+    "command": "savings",
+    "inputs": {"--cost": "samples/modern-usage.json", "--reductions": "samples/reductions.md"},
+    "table": "savings.md",
+    "required": ["exclud|not counted"]
+  },
+  "delta": {
+    "command": "delta",
+    "inputs": {"--before": "samples/delta-before.json", "--after": "samples/delta-after.json"},
+    "table": "delta.md"
+  },
+  "annual": {
+    "command": "delta",
+    "inputs": {"--before": "samples/delta-before.json", "--after": "samples/delta-after.json"},
+    "flags": ["--annual"],
+    "table": "annual.md",
+    "required": ["project", "not (?:a )?measured|forward.looking|while usage and pricing"]
+  },
+  "missing-actuals": {
+    "command": "report",
+    "inputs": {"--input": "fixtures/missing-actuals.json"},
+    "table": "missing-actuals.md",
+    "required": ["UNKNOWN"]
+  },
+  "mixed-currency": {
+    "command": "report",
+    "inputs": {"--input": "fixtures/mixed-currency.json"},
+    "table": "mixed-currency.md",
+    "required": ["not aggregated|cannot.{0,40}(?:sum|total|aggregat)|mixed currencies"]
+  },
+  "default-currency": {
+    "command": "report",
+    "inputs": {"--input": "fixtures/default-currency.json"},
+    "table": "default-currency.md",
+    "required": ["assum[^\\n]{0,160}USD|USD[^\\n]{0,160}assum"]
+  },
+  "removal": {
+    "command": "delta",
+    "inputs": {"--before": "samples/delta-before.json"},
+    "table": "removal.md",
+    "required": ["reservation|savings.plan", "cash.{0,100}(?:may|not|until|lag)|(?:may not|until).{0,100}cash"]
+  },
+  "missing-window": {
+    "required": ["(?:date|period|window|days|month)", "(?:need|provide|unknown|cannot|can't|missing)"],
+    "forbidden": ["\\b(?:assume|assuming)\\s+(?:a\\s+)?(?:30|31)\\s*day"]
+  },
+  "cloud-shell": {
+    "required": ["Cloud Shell", "az\\s+rest", "AmortizedCost", "(?:az\\s+graph\\s+query|Resource Graph)", "az\\s+account\\s+set"],
+    "forbidden": ["az\\s+costmanagement\\s+query", "(?:/mnt/c|[A-Z]:\\\\|~/Downloads)"]
+  },
+  "null-recovery": {
+    "required": ["az\\s+rest", "AmortizedCost", "null|None|missing|no.{0,30}(?:cost|amount)", "UNKNOWN|cannot|can't|not(?: evidence of)? zero"],
+    "forbidden": ["az\\s+costmanagement\\s+query"]
+  },
+  "scope-recovery": {
+    "required": ["subscription", "(?:az\\s+graph\\s+query|Resource Graph)", "az\\s+account\\s+set", "az\\s+account\\s+show\\b", "--query\\s+['\"]?data"],
+    "forbidden": ["az\\s+role\\s+assignment\\s+create"]
+  },
+  "deployment": {
+    "required": ["deploy|rollout", "region|resource", "(?:before|baseline)", "after", "AmortizedCost", "--annual"],
+    "forbidden": ["(?:use|using|assume)\\s+(?:the\\s+)?(?:PR\\s+)?merge\\s+date\\s+as\\s+(?:the\\s+)?deploy"]
+  },
+  "identity": {
+    "command": "delta",
+    "inputs": {"--before": "fixtures/workflow-before.json", "--after": "fixtures/workflow-after.json"},
+    "selection": {"resourceId": ["/subscriptions/0000/resourceGroups/demo/providers/Microsoft.Web/serverFarms/app-prod"]},
+    "flags": ["--annual"],
+    "table": "identity.md",
+    "required": ["project|run.rate"]
+  },
+  "sql-resize": {
+    "command": "delta",
+    "inputs": {"--before": "fixtures/workflow-before.json", "--after": "fixtures/workflow-after.json"},
+    "selection": {"resourceId": ["/subscriptions/0000/resourceGroups/demo/providers/Microsoft.Sql/servers/sql-east/databases/app-db"]},
+    "flags": ["--annual"],
+    "table": "sql-resize.md",
+    "required": ["project|run.rate"]
+  },
+  "sql-removal": {
+    "command": "delta",
+    "inputs": {"--before": "fixtures/workflow-before.json"},
+    "selection": {"resourceId": ["/subscriptions/0000/resourceGroups/demo/providers/Microsoft.Sql/servers/sql-east", "/subscriptions/0000/resourceGroups/demo/providers/Microsoft.Sql/servers/sql-east/databases/app-db"]},
+    "flags": ["--annual"],
+    "table": "sql-removal.md",
+    "required": ["project|run.rate"]
+  },
+  "cosmos-region": {
+    "command": "delta",
+    "inputs": {"--before": "fixtures/workflow-before.json"},
+    "selection": {
+      "resourceId": ["/subscriptions/0000/resourceGroups/demo/providers/Microsoft.DocumentDB/databaseAccounts/cosmos-demo"],
+      "resourceLocation": ["westus2"],
+      "meterName": ["Throughput"]
+    },
+    "flags": ["--annual"],
+    "table": "cosmos-region.md",
+    "required": ["project|run.rate"]
+  },
+  "deployment-result": {
+    "command": "delta",
+    "inputs": {"--before": "fixtures/workflow-before.json", "--after": "fixtures/workflow-after.json"},
+    "selection": {"resourceId": ["/subscriptions/0000/resourceGroups/demo/providers/Microsoft.Sql/servers/sql-east/databases/app-db", "/subscriptions/0000/resourceGroups/demo/providers/Microsoft.Sql/servers/sql-west/databases/app-db"]},
+    "flags": ["--annual"],
+    "table": "deployment-result.md",
+    "required": ["project", "not (?:a )?measured|forward.looking|while usage and pricing"]
+  },
+  "graph-recovery": {
+    "shell_required": ["resourcechanges", "properties\\s*(?:\\.\\s*targetResourceId|\\[['\"]targetResourceId['\"]\\])", "--query\\s+['\"]?data", "az\\s+account\\s+set"],
+    "shell_forbidden": ["\\bwhere\\s+resourceId\\s*(?:=|in\\b)"]
+  },
+  "deployment-query": {
+    "shell_required": ["az\\s+rest\\b", "CostManagement/query", "[\"']type[\"']\\s*:\\s*[\"']AmortizedCost[\"']", "[\"']granularity[\"']\\s*:\\s*[\"']Daily[\"']", "[\"']filter[\"']\\s*:", "[\"']Name[\"']\\s*:\\s*[\"']ResourceId[\"']", "[\"']Operator[\"']\\s*:\\s*[\"']In[\"']", "[\"']from[\"']\\s*:", "[\"']to[\"']\\s*:", "2026-04-01", "2026-04-02", "2026-06-01", "2026-06-02", "Microsoft.Sql/servers/sql-east/databases/app-db", "Microsoft.Sql/servers/sql-west/databases/app-db"],
+    "shell_forbidden": ["~/Downloads|/mnt/c|[A-Z]:\\\\", "az\\s+costmanagement\\s+query"]
+  },
+  "async-recovery": {
+    "required": ["Location|header|406", "az\\s+rest", "AmortizedCost"],
+    "shell_required": ["az\\s+rest\\b", "AmortizedCost"],
+    "shell_forbidden": ["generateCostDetailsReport", "\\buntil\\b"]
+  },
+  "realized-removal": {
+    "required": ["project|run.rate", "after|post", "not (?:yet )?(?:measured|realized)|(?:cannot|can't).{0,60}(?:confirm|claim|establish|call|label|treat).{0,30}(?:realized|measured)"],
+    "forbidden": ["realized,? not projected", "\\b(?:guaranteed|certain|definite) (?:cash|realized) savings\\b"]
+  },
+  "unrelated": {}
+}
