@@ -23,6 +23,7 @@ the skill never guesses.
 - [Why the numbers are trustworthy](#why-the-numbers-are-trustworthy)
 - [Files](#files)
 - [Tests](#tests)
+- [Behavioral evaluations](#behavioral-evaluations)
 - [License](#license)
 
 ## What it does
@@ -209,6 +210,84 @@ present, amounts default to **USD** as a label-only assumption that never alters
 ```bash
 python tests/test_actualize.py
 ```
+
+## Behavioral evaluations
+
+Vally `0.21.0` tests the skill in the Copilot runtime using synthetic data.
+Evaluation tooling requires Node.js `>=22.15.0`, Python 3, and Linux Docker
+engine 28 or newer with Compose and buildx (Docker Desktop with WSL2 on Windows).
+Skill users still need only Python's standard library.
+
+From the repository root in PowerShell:
+
+```powershell
+npm ci
+npm run eval:check
+npm run eval:doctor
+```
+
+`eval:check` runs static validation and offline tests without Docker or model
+calls. Start Docker before `eval:doctor`, which checks runtime setup and
+isolation without model calls. Builds download dependencies; the doctor also
+checks public GitHub connectivity.
+
+If public npm is blocked, set `ACTUALIZE_EVAL_NPM_REGISTRY` to an approved HTTPS
+mirror without credentials. Keep TLS verification enabled.
+
+### Paid runs
+
+Model calls require both `--paid` and a Copilot-enabled token in
+`COPILOT_GITHUB_TOKEN`. The runner does not reuse your interactive Copilot login.
+Run the smoke suite:
+
+```powershell
+$secret = Read-Host 'Copilot-enabled token' -AsSecureString
+$env:COPILOT_GITHUB_TOKEN = [Net.NetworkCredential]::new('', $secret).Password
+try {
+    npm run eval:smoke -- --paid
+} finally {
+    Remove-Item Env:\COPILOT_GITHUB_TOKEN
+    $secret.Dispose()
+}
+```
+
+For the full suite, replace the smoke command inside the authenticated block:
+
+```powershell
+npm run eval:full -- --paid
+```
+
+For the workflow suite, use `npm run eval:workflows -- --paid` in the same block.
+
+Defaults are `gpt-5.3-codex`, `low` reasoning, one worker, no retries and a
+five-minute deadline per trial. Override the model and reasoning with
+`ACTUALIZE_EVAL_MODEL` and `ACTUALIZE_EVAL_REASONING`.
+The limit of 200,000 tokens is checked after execution, not enforced as a spending
+cap. Failed and timed-out attempts can still incur charges.
+
+Tasks have no live Azure access or host credentials beyond the selected Copilot
+token. That token is readable inside the task; use an appropriate token and
+review traces before sharing. Graders run separately without network access.
+
+### Saved runs
+
+Results, traces and source snapshots stay in ignored `vally-results`
+directories; retained workspaces stay in `.eval-workspaces`. Keep both and
+the exact evaluation checkout to regrade without model calls:
+
+```powershell
+npm run eval:regrade -- vally-results\<run-id>
+```
+
+For intentional grader changes:
+
+```powershell
+npm run eval:regrade -- vally-results\<run-id> --current-graders
+```
+
+Regrading records source differences and separate results under
+`regrades\<id>` without overwriting the original run. It does not evaluate
+skill changes; those require fresh trials.
 
 ## License
 

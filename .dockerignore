@@ -1,0 +1,9 @@
+*
+!package.json
+!package-lock.json
+!evals/
+evals/*
+!evals/docker/
+evals/docker/*
+!evals/docker/Dockerfile
+!evals/docker/squid.conf

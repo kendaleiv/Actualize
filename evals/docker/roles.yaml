@@ -1,0 +1,5 @@
+services:
+  task:
+    image: actualize-vally:0.21.0
+    profiles: [vally-task]
+    dns: [127.0.0.1]

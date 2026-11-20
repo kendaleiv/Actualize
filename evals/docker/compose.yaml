@@ -1,0 +1,28 @@
+services:
+  egress:
+    image: ${ACTUALIZE_EVAL_IMAGE:?Run through evals/run.mjs}
+    entrypoint: ["/usr/sbin/squid"]
+    command: ["-N", "-d1", "-f", "/etc/squid/squid.conf"]
+    user: "1000:1000"
+    read_only: true
+    cap_drop: [ALL]
+    security_opt: ["no-new-privileges:true"]
+    tmpfs:
+      - /tmp:rw,noexec,nosuid,size=32m,uid=1000,gid=1000
+    networks: [task, outbound]
+    healthcheck:
+      test: ["CMD", "python3", "-c", "import socket; socket.create_connection(('127.0.0.1',3128),2).close()"]
+      interval: 2s
+      timeout: 3s
+      retries: 15
+    deploy:
+      resources:
+        limits:
+          cpus: "0.5"
+          memory: 256M
+networks:
+  task:
+    internal: true
+    driver_opts:
+      com.docker.network.bridge.gateway_mode_ipv4: isolated
+  outbound: {}

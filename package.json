@@ -1,0 +1,19 @@
+{
+  "name": "actualize-evals",
+  "private": true,
+  "engines": {
+    "node": ">=22.15.0"
+  },
+  "scripts": {
+    "eval:lint": "node evals/run.mjs lint",
+    "eval:smoke": "node evals/run.mjs smoke",
+    "eval:full": "node evals/run.mjs full",
+    "eval:workflows": "node evals/run.mjs workflows",
+    "eval:check": "node evals/run.mjs check",
+    "eval:doctor": "node evals/run.mjs doctor",
+    "eval:regrade": "node evals/run.mjs regrade"
+  },
+  "devDependencies": {
+    "@microsoft/vally-cli": "0.21.0"
+  }
+}

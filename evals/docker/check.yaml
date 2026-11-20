@@ -1,0 +1,65 @@
+name: actualize-docker-check
+defaults:
+  executor: mock
+  runs: 1
+  timeout: 2m
+  backend:
+    name: docker
+    args:
+      task-image: actualize-vally:0.21.0
+      grade-image: actualize-vally:0.21.0
+      task-network: none
+      grade-network: none
+      compose-file: roles.yaml
+      task-env: [HTTPS_PROXY, HTTP_PROXY, NODE_USE_ENV_PROXY]
+agent_environment:
+  files:
+    - src: check_network.py
+      dest: check_network.py
+  commands:
+    - >-
+      python3 -c "import os,pathlib,shutil; assert os.getuid()!=0;
+      assert not pathlib.Path('.grading').exists();
+      assert 'ACTUALIZE_HOST_SENTINEL' not in os.environ;
+      assert not shutil.which('az');
+      pathlib.Path('task-user.txt').write_text(str(os.getuid()))"
+    - python3 check_network.py
+grading_environment:
+  files:
+    - src: sentinel.txt
+      dest: .grading/sentinel.txt
+scoring:
+  threshold: 1
+stimuli:
+  - name: separate-hidden-grading
+    prompt: docker-check
+    tags:
+      control: pass
+    graders:
+      - type: output-contains
+        config:
+          substring: docker-check
+      - type: program
+        config:
+          program: python3
+          args:
+            - -c
+            - >-
+              import os,pathlib,socket;
+              assert os.getuid()!=0;
+              assert pathlib.Path('.grading/sentinel.txt').read_text().strip()=='grader-only';
+              assert pathlib.Path('task-user.txt').read_text()!='0';
+              assert 'ACTUALIZE_HOST_SENTINEL' not in os.environ;
+              assert 'COPILOT_GITHUB_TOKEN' not in os.environ;
+              assert 'GH_TOKEN' not in os.environ;
+              assert 'GITHUB_TOKEN' not in os.environ;
+              assert not pathlib.Path('/var/run/docker.sock').exists();
+              assert len(socket.if_nameindex())==1
+  - name: deliberately-failing-verdict
+    prompt: docker-check
+    tags:
+      control: fail
+    graders:
+      - type: output-contains
+        config:
+          substring: this-text-is-deliberately-absent

@@ -1,0 +1,9 @@
+[
+  {
+    "resourceName": "unknown-cost",
+    "quantity": 1,
+    "payGPrice": 10,
+    "costInBillingCurrency": null,
+    "billingCurrency": "USD"
+  }
+]

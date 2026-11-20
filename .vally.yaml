@@ -1,0 +1,21 @@
+paths:
+  skills: []
+  evals: [evals/actualize]
+  results: vally-results
+defaults:
+  backend:
+    name: docker
+suites:
+  smoke:
+    description: Three representative cases, one paid trial each.
+    evals: [evals/actualize/eval.yaml]
+    filter:
+      suite: smoke
+  full:
+    description: All behavioral cases, three paid trials each.
+    evals: [evals/actualize/eval.yaml]
+  workflows:
+    description: History-derived workflow regressions, three paid trials each.
+    evals: [evals/actualize/eval.yaml]
+    filter:
+      suite: workflows
